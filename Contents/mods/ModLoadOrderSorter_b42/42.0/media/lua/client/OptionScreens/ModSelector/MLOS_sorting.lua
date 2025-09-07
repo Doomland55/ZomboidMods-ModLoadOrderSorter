@@ -134,7 +134,7 @@ function ModSorter:readSortingRules()
 			elseif key == "loadlast" then
 				currule.loadLast = convertToLoadCategoryString(value)
 			elseif key == "category" then
-				currule.category = utils:contains(rawCategoryOrder, string.lower(value)) and string.lower(value) or nil
+				currule.category = utils:contains(rawCategoryOrder, value) and value or nil
 				if currule.category == nil then print("[[readSortingRules]]: Unsupported category", value, " Skipping...") end
 			elseif key ~= "" then
 				print("[[readSortingRules]]: Unsupported key", key, " Skipping...")
