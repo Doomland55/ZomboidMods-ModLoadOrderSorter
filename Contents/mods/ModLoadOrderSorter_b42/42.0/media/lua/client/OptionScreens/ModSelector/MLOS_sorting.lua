@@ -23,14 +23,15 @@ local loadCategories = { on = 0, category = 1, off = 2 }
 local ModSorter = {}
 ModSorter.modsInfoCache = {}
 
+function ModSorter:getRawCategoryOrder() return rawCategoryOrder end
+function ModSorter:getLoadCategories() return loadCategories end
 
 -- \/ ================================== SORTING RULES ================================== \/
 
 local function convertToLoadCategory(value)
-	if loadCategories[value] ~= nil then return value end
-	if value == true or value == "true" then return "on" end
-	print("[[convertToLoadCategory]]: Unsupported value", value, " Skipping...")
-	return "off"
+	if utils:contains({nil, false, "false", 2}, value) then value = "off"
+	elseif utils:contains({true, "true", 0}, value) then value = "on" end
+	return loadCategories[value] or 0
 end
 
 local function getSRDataText(modId, loadAfter, loadBefore, incompatibleMods, loadfirst, loadlast)
