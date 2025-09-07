@@ -8,9 +8,14 @@ UI_PTBR = {
     UI_MLOS_CurrentRules_Tooltip = "A legislação em vigor",
     UI_MLOS_SaveRules_Tooltip = "Salvar",
     UI_MLOS_ClickCloseWithoutSaving_Tooltip = "Clique para sair do Modo de Edição sem salvar",
-    
     UI_MLOS_SortingRules_apply_btn = "Aplicar",
     UI_MLOS_SortingRules_incompatible_btn = "Incompatível",
     UI_MLOS_SortingRules_load_before_btn = "Carregar antes",
-    UI_MLOS_SortingRules_load_after_btn = "Carregar depois"
+    UI_MLOS_SortingRules_load_after_btn = "Carregar depois",
+    UI_MLOS_SortingRules_yes = "Sim",
+    UI_MLOS_SortingRules_no = "Não",
+    UI_MLOS_SortingRules_in_category = "na categoria",
+    UI_MLOS_SortingRules_LoadFirst = "Carregar primeiro",
+    UI_MLOS_SortingRules_LoadLast = "Carregar o Último",
+    UI_MLOS_SortingRules_Category = "Categoria"
 }

@@ -23,42 +23,51 @@ local loadCategories = { on = 0, category = 1, off = 2 }
 local ModSorter = {}
 ModSorter.modsInfoCache = {}
 
+---@return table
+function ModSorter:getRawCategoryOrder() return rawCategoryOrder end
+---@return table
+function ModSorter:getLoadCategories() return loadCategories end
 
 -- \/ ================================== SORTING RULES ================================== \/
 
-local function convertToLoadCategory(value)
-	if loadCategories[value] ~= nil then return value end
-	if value == true or value == "true" then return "on" end
-	print("[[convertToLoadCategory]]: Unsupported value", value, " Skipping...")
-	return "off"
+---@param value string|number|boolean|nil
+---@return string
+local function convertToLoadCategoryString(value)
+	if utils:contains({true, "true", 0}, value) then value = "on"
+	elseif utils:contains({nil, false, "false", 2}, value) or loadCategories[value] == nil then value = "off" end
+	return tostring(value)
 end
 
-local function getSRDataText(modId, loadAfter, loadBefore, incompatibleMods, loadfirst, loadlast)
+---@return string | nil
+local function getSRDataText(modId, loadAfter, loadBefore, incompatibleMods, loadfirst, loadlast, category)
 	local text = ""
 	if not utils:tableIsEmpty(loadAfter) then text = text .. "loadAfter=" .. table.concat(loadAfter, ",") .. "\r\n" end
 	if not utils:tableIsEmpty(loadBefore) then text = text .. "loadBefore=" .. table.concat(loadBefore, ",") .. "\r\n" end
 	if not utils:tableIsEmpty(incompatibleMods) then text = text .. "incompatibleMods=" .. table.concat(incompatibleMods, ",") .. "\r\n" end
 	if loadfirst ~= nil and loadfirst ~= 'off' then text = text .. "loadFirst=" .. loadfirst .. "\r\n" end
 	if loadlast ~= nil and loadlast ~= 'off' then text = text .. "loadLast=" .. loadlast .. "\r\n" end
+	if category ~= nil then text = text .. "category=" .. category .. "\r\n" end
 	return text ~= "" and "[" .. modId .. "]\r\n" .. text or nil
 end
 
-function ModSorter:addSortingRule(modId, loadAfter, loadBefore, incompatibleMods, loadfirst, loadlast)
+function ModSorter:addSortingRule(modId, loadAfter, loadBefore, incompatibleMods, loadfirst, loadlast, category)
 	local file = getFileWriter(RULES_FILE, true, true)
-	local text = getSRDataText(modId, loadAfter, loadBefore, incompatibleMods, loadfirst, loadlast)
+	local text = getSRDataText(modId, loadAfter, loadBefore, incompatibleMods, loadfirst, loadlast, category)
 	if text~=nil then file:write(text) end
 	file:close()
 end
 
-function ModSorter:updateSortingRule(modId, loadAfter, loadBefore, incompatibleMods, loadfirst, loadlast)
+function ModSorter:updateSortingRule(modId, loadAfter, loadBefore, incompatibleMods, loadfirst, loadlast, category)
 	if self.sortingRulesCache == nil then self:readSortingRules() end
 
+	local modData = self.modsInfoCache[modId]
 	local rulesFromFile = self.sortingRulesCache[modId] or {}
 	rulesFromFile.loadAfter = loadAfter or rulesFromFile.loadAfter or {}
 	rulesFromFile.loadBefore = loadBefore or rulesFromFile.loadBefore or {}
 	rulesFromFile.incompatibleMods = incompatibleMods or rulesFromFile.incompatibleMods or {}
 	rulesFromFile.loadFirst = loadfirst or rulesFromFile.loadFirst or "off"
 	rulesFromFile.loadLast = loadlast or rulesFromFile.loadLast or "off"
+	rulesFromFile.category = modData.category ~= category and category or nil
 	self.sortingRulesCache[modId] = rulesFromFile
 	return self.sortingRulesCache
 end
@@ -67,8 +76,8 @@ function ModSorter:updateExtraModInfoSortingRules(extraModInfo, rulesFromFile)
 	rulesFromFile.loadAfter = utils:MergeTablesDedup(rulesFromFile.loadAfter or {}, extraModInfo.loadAfter)
 	rulesFromFile.loadBefore = utils:MergeTablesDedup(rulesFromFile.loadBefore or {}, extraModInfo.loadBefore)
 	rulesFromFile.incompatibleMods = utils:MergeTablesDedup(rulesFromFile.incompatibleMods or {}, extraModInfo.incompatibleMods)
-	rulesFromFile.loadFirst = convertToLoadCategory(rulesFromFile.loadFirst or extraModInfo.loadFirst)
-	rulesFromFile.loadLast = convertToLoadCategory(rulesFromFile.loadLast or extraModInfo.loadLast)
+	rulesFromFile.loadFirst = convertToLoadCategoryString(rulesFromFile.loadFirst or extraModInfo.loadFirst)
+	rulesFromFile.loadLast = convertToLoadCategoryString(rulesFromFile.loadLast or extraModInfo.loadLast)
 
 	extraModInfo.sortingRules = rulesFromFile
 end
@@ -93,7 +102,7 @@ function ModSorter:saveSortingRules(SR_Data, name)
 
 	local file = getFileWriter(file_name, true, false)
 	for modId, data in pairs(file_data) do
-		local text = getSRDataText(modId, data.loadAfter, data.loadBefore, data.incompatibleMods, data.loadFirst, data.loadLast)
+		local text = getSRDataText(modId, data.loadAfter, data.loadBefore, data.incompatibleMods, data.loadFirst, data.loadLast, data.category)
 		if text~=nil then file:write(text) end
 	end
 	file:close()
@@ -121,9 +130,12 @@ function ModSorter:readSortingRules()
 			elseif key == "incompatiblemods" or key == "incompatible" then
 				currule.incompatibleMods = utils:addSlashToBeginnig(utils:MergeTablesDedup(currule.incompatibleMods or {}, utils:splitStringBySeparator(value)))
 			elseif key == "loadfirst" then
-				currule.loadFirst = convertToLoadCategory(value)
+				currule.loadFirst = convertToLoadCategoryString(value)
 			elseif key == "loadlast" then
-				currule.loadLast = convertToLoadCategory(value)
+				currule.loadLast = convertToLoadCategoryString(value)
+			elseif key == "category" then
+				currule.category = utils:contains(rawCategoryOrder, value) and value or nil
+				if currule.category == nil then print("[[readSortingRules]]: Unsupported category", value, " Skipping...") end
 			elseif key ~= "" then
 				print("[[readSortingRules]]: Unsupported key", key, " Skipping...")
 			end
@@ -163,9 +175,9 @@ local function readModInfoFile(modId)
 		elseif key == "incompatiblemods" then
 			result.incompatibleMods = utils:splitStringBySeparator(value)
 		elseif key == "loadfirst" then
-			result.loadFirst = convertToLoadCategory(value)
+			result.loadFirst = convertToLoadCategoryString(value)
 		elseif key == "loadlast" then
-			result.loadLast = convertToLoadCategory(value)
+			result.loadLast = convertToLoadCategoryString(value)
 		end
 
 		line = file:readLine()
@@ -265,8 +277,8 @@ local function initialSortMods(a, b)
 		return loadCategories[a_sr.loadLast] > loadCategories[b_sr.loadLast]
 	end
 	-- sort by category
-	if categoryOrder[a.category] ~= categoryOrder[b.category] then
-		return categoryOrder[a.category] < categoryOrder[b.category]
+	if categoryOrder[a_sr.category or a.category] ~= categoryOrder[b_sr.category or b.category] then
+		return categoryOrder[a_sr.category or a.category] < categoryOrder[b_sr.category or b.category]
 	end
 	-- sorting rules loadFirst/loadLast in category
 	if a_sr.loadFirst ~= b_sr.loadFirst then

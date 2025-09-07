@@ -12,5 +12,11 @@ UI_TR = {
     UI_MLOS_SortingRules_apply_btn = "Uygula",
     UI_MLOS_SortingRules_incompatible_btn = "Uyumsuz",
     UI_MLOS_SortingRules_load_before_btn = "Önce yükle",
-    UI_MLOS_SortingRules_load_after_btn = "Sonra yükle"
+    UI_MLOS_SortingRules_load_after_btn = "Sonra yükle",
+    UI_MLOS_SortingRules_yes = "Evet",
+    UI_MLOS_SortingRules_no = "Hayır",
+    UI_MLOS_SortingRules_in_category = "İçinde kategori",
+    UI_MLOS_SortingRules_LoadFirst = "Önce yükle",
+    UI_MLOS_SortingRules_LoadLast = "Sonuncuyu Yükle",
+    UI_MLOS_SortingRules_Category = "Kategori"
 }

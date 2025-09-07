@@ -12,5 +12,11 @@ UI_ES = {
     UI_MLOS_SortingRules_apply_btn = "Aplicar",
     UI_MLOS_SortingRules_incompatible_btn = "Incompatible",
     UI_MLOS_SortingRules_load_before_btn = "Cargar antes",
-    UI_MLOS_SortingRules_load_after_btn = "Cargar después"
+    UI_MLOS_SortingRules_load_after_btn = "Cargar después",
+    UI_MLOS_SortingRules_yes = "Sí",
+    UI_MLOS_SortingRules_no = "No",
+    UI_MLOS_SortingRules_in_category = "En la categoría:",
+    UI_MLOS_SortingRules_LoadFirst = "Cargar primero",
+    UI_MLOS_SortingRules_LoadLast = "Cargar el último",
+    UI_MLOS_SortingRules_Category = "Categoría"
 }

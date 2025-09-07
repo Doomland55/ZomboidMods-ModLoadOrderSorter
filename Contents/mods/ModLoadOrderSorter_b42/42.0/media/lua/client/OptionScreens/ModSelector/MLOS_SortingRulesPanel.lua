@@ -22,6 +22,7 @@ local BUTTON_HGT = FONT_HGT_SMALL + 6
 local borderColorLight = { r = 1, g = 1, b = 1, a = 0.6 }
 local borderColorDark = { r = 1, g = 1, b = 1, a = 0.2 }
 
+
 function SortingRulesPanel:new(x, y, width, height, modListObj)
     local o = ISPanelJoypad:new(x, y, width, height)
     setmetatable(o, self)
@@ -98,12 +99,32 @@ function SortingRulesPanel:createChildren()
     self.incompatible:ignoreHeightChange();
     self:addChild(self.incompatible);
 
-    self.applyBtn = ISButton:new(PADDING, self.incompatible:getBottom() + PADDING, self.width - PADDING * 2, BUTTON_HGT, getText("UI_MLOS_SortingRules_apply_btn"), self, self.onButtonClick);
+    local loadTr = {on=getText("UI_MLOS_SortingRules_yes"), off=getText("UI_MLOS_SortingRules_no"), category=getText("UI_MLOS_SortingRules_in_category")}
+    local loadFirstTr = getText("UI_MLOS_SortingRules_LoadFirst")
+    local loadLastTr = getText("UI_MLOS_SortingRules_LoadLast")
+
+    -- loadFirst
+    self.loadFirstComboBox = ISComboBox:new(PADDING, self.incompatible:getBottom() + PADDING, self.width - PADDING * 2, BUTTON_HGT, self, self.onComboBoxChange)
+    self.loadFirstComboBox.borderColor = borderColorLight
+    for name, _ in pairs(MLOS_sorting:getLoadCategories()) do self.loadFirstComboBox:addOptionWithData(loadFirstTr .. ": " .. loadTr[name], name) end
+    self:addChild(self.loadFirstComboBox)
+
+    -- loadLast
+    self.loadLastComboBox = ISComboBox:new(PADDING, self.loadFirstComboBox:getBottom() + PADDING, self.width - PADDING * 2, BUTTON_HGT, self, self.onComboBoxChange)
+    self.loadLastComboBox.borderColor = borderColorLight
+    for name, _ in pairs(MLOS_sorting:getLoadCategories()) do self.loadLastComboBox:addOptionWithData(loadLastTr .. ": " .. loadTr[name], name) end
+    self:addChild(self.loadLastComboBox)
+
+    -- category 
+    self.categoryComboBox = ISComboBox:new(PADDING, self.loadLastComboBox:getBottom() + PADDING, self.width - PADDING * 2, BUTTON_HGT, self, self.onComboBoxChange)
+    self.categoryComboBox.borderColor = borderColorLight
+    self:addChild(self.categoryComboBox)
+
+    self.applyBtn = ISButton:new(PADDING, self.categoryComboBox:getBottom() + PADDING, self.width - PADDING * 2, BUTTON_HGT, getText("UI_MLOS_SortingRules_apply_btn"), self, self.onButtonClick);
     self.applyBtn.internal = "APPLY";
     self.applyBtn:initialise();
     self.applyBtn:instantiate();
     self.applyBtn:setAnchorsTBLR(true, false, true, false);
-    self.applyBtn.borderColor = borderColorDark;
     self.applyBtn:setFont(UIFont.Small);
     self.applyBtn:ignoreWidthChange();
     self.applyBtn:ignoreHeightChange();
@@ -119,7 +140,7 @@ end
 
 function SortingRulesPanel:updateTooltips(modInfo)
     local text = getText("UI_MLOS_ClickEditMode_Tooltip")
-    if modInfo == nil then 
+    if modInfo == nil then
         self.loadAfter:setTooltip(text)
         self.loadBefore:setTooltip(text)
         self.incompatible:setTooltip(text)
@@ -130,6 +151,32 @@ function SortingRulesPanel:updateTooltips(modInfo)
         self.incompatible:setTooltip(text .. "\n" .. curRulesText .. utils:getString(modInfo.sortingRules.incompatibleMods, 0))
     end
     self.applyBtn:setTooltip(getText("UI_MLOS_SaveRules_Tooltip"))
+end
+
+
+function SortingRulesPanel:onComboBoxChange(combobox_obj)
+    if self.applyBtn.enable ~= true then
+        self.applyBtn.borderColor = borderColorLight
+        self.applyBtn.enable = true
+    end
+end
+
+
+function SortingRulesPanel:updateComboBoxValues(modInfo)
+    self.categoryComboBox:clear()
+    local categoryTr = getText("UI_MLOS_SortingRules_Category")
+    for _, name in pairs(MLOS_sorting:getRawCategoryOrder()) do
+        self.categoryComboBox:addOptionWithData(categoryTr .. ": " .. (modInfo.category == name and name .. " *" or name), name)
+    end
+
+    if modInfo ~= nil then
+        self.loadFirstComboBox:selectData(modInfo.sortingRules.loadFirst or modInfo.loadFirst)
+        self.loadLastComboBox:selectData(modInfo.sortingRules.loadLast or modInfo.loadLast)
+        self.categoryComboBox:selectData(modInfo.sortingRules.category or modInfo.category)
+        self.loadFirstComboBox.prev_selected = self.loadFirstComboBox.selected
+        self.loadLastComboBox.prev_selected = self.loadLastComboBox.selected
+        self.categoryComboBox.prev_selected = self.categoryComboBox.selected
+    end
 end
 
 
@@ -166,23 +213,31 @@ end
 function SortingRulesPanel:onEnterSortingRules(item)
     self.modInfoCache = MLOS_sorting.modsInfoCache[item.item.modId]
     if self.modInfoCache == nil then return end
-    self:setHeight(PADDING*6 + BUTTON_HGT*4 + getTextManager():getFontHeight(UIFont.Medium) + getTextManager():getFontHeight(UIFont.Small))
+    self:setHeight(PADDING*9 + BUTTON_HGT*7 + getTextManager():getFontHeight(UIFont.Medium) + getTextManager():getFontHeight(UIFont.Small))
     self:setY(getMouseY() - self:getHeight()/2)
     self:updateTooltips(self.modInfoCache)
+    self:updateComboBoxValues(self.modInfoCache)
     self:setVisible(true)
     self:addToUIManager()
 end
 
 
 function SortingRulesPanel:onExitSortingRules(onlyUpdate)
+    self.applyBtn.enable = false
     self.loadAfter.enable = true
     self.loadBefore.enable = true
     self.incompatible.enable = true
+    self.loadFirstComboBox:setEnabled(true)
+    self.loadLastComboBox:setEnabled(true)
+    self.categoryComboBox:setEnabled(true)
+    self.applyBtn.borderColor = borderColorDark
     self.loadAfter.borderColor = borderColorLight
     self.loadBefore.borderColor = borderColorLight
     self.incompatible.borderColor = borderColorLight
-    self.applyBtn.enable = false
-    self.applyBtn.borderColor = borderColorDark
+    self.loadFirstComboBox.borderColor = borderColorLight
+    self.loadLastComboBox.borderColor = borderColorLight
+    self.categoryComboBox.borderColor = borderColorLight
+
     self:updateTooltips()
     self.editModeData = nil
 
@@ -237,19 +292,22 @@ end
 
 
 function SortingRulesPanel:applyChanges()
-    local devRules = self.editModeData.type == "LOAD_AFTER" and self.modInfoCache.loadAfter or
-                     self.editModeData.type == "LOAD_BEFORE" and self.modInfoCache.loadBefore or
-                     self.editModeData.type == "INCOMPATIBLE" and self.modInfoCache.incompatibleMods or nil
-    local rules = self.editModeData.type == "LOAD_AFTER" and self.modInfoCache.sortingRules.loadAfter or
-                  self.editModeData.type == "LOAD_BEFORE" and self.modInfoCache.sortingRules.loadBefore or
-                  self.editModeData.type == "INCOMPATIBLE" and self.modInfoCache.sortingRules.incompatibleMods or nil
+    -- local devRules = self.editModeData.type == "LOAD_AFTER" and self.modInfoCache.loadAfter or
+    --                  self.editModeData.type == "LOAD_BEFORE" and self.modInfoCache.loadBefore or
+    --                  self.editModeData.type == "INCOMPATIBLE" and self.modInfoCache.incompatibleMods or nil
+    -- local rules = self.editModeData.type == "LOAD_AFTER" and self.modInfoCache.sortingRules.loadAfter or
+    --               self.editModeData.type == "LOAD_BEFORE" and self.modInfoCache.sortingRules.loadBefore or
+    --               self.editModeData.type == "INCOMPATIBLE" and self.modInfoCache.sortingRules.incompatibleMods or nil
     -- local rulesFromFile = utils:tableDifference(devRules, rules)
 
     -- add mod only if they are not in dev rules
     local modlist = {}
-    for modId, color in pairs(self.editModeData.curRules) do
-        if color == self.editModeData.color then
-            table.insert(modlist, modId)
+    local editModeData = self.editModeData or {}
+    if self.editModeData ~= nil then
+        for modId, color in pairs(self.editModeData.curRules) do
+            if color == self.editModeData.color then
+                table.insert(modlist, modId)
+            end
         end
     end
     
@@ -274,18 +332,30 @@ function SortingRulesPanel:applyChanges()
     -- end
 
     MLOS_sorting:updateSortingRule(self.modInfoCache.id,
-                                   self.editModeData.type == "LOAD_AFTER" and modlist or nil,
-                                   self.editModeData.type == "LOAD_BEFORE" and modlist or nil,
-                                   self.editModeData.type == "INCOMPATIBLE" and modlist or nil)
+                                   editModeData.type == "LOAD_AFTER" and modlist or nil,
+                                   editModeData.type == "LOAD_BEFORE" and modlist or nil,
+                                   editModeData.type == "INCOMPATIBLE" and modlist or nil,
+                                   self.loadFirstComboBox:getOptionData(self.loadFirstComboBox.selected),
+                                   self.loadLastComboBox:getOptionData(self.loadLastComboBox.selected),
+                                   self.categoryComboBox:getOptionData(self.categoryComboBox.selected))
     MLOS_sorting:saveSortingRules()
     self.modListObj:updateModsColor()
 end
 
 function SortingRulesPanel:switchEditMode(button, color)
     if button ~= nil and self.editModeData == nil then
+        if self.applyBtn.enable == true then self:updateComboBoxValues(self.modInfoCache) end
+
         self.loadAfter.enable = button.internal == self.loadAfter.internal
         self.loadBefore.enable = button.internal == self.loadBefore.internal
         self.incompatible.enable = button.internal == self.incompatible.internal
+        self.loadFirstComboBox:setEnabled(false)
+        self.loadLastComboBox:setEnabled(false)
+        self.categoryComboBox:setEnabled(false)
+        self.loadFirstComboBox.borderColor = borderColorDark
+        self.loadLastComboBox.borderColor = borderColorDark
+        self.categoryComboBox.borderColor = borderColorDark
+
         self.loadAfter.borderColor = button.internal == self.loadAfter.internal and borderColorLight or borderColorDark
         self.loadBefore.borderColor = button.internal == self.loadBefore.internal and borderColorLight or borderColorDark
         self.incompatible.borderColor = button.internal == self.incompatible.internal and borderColorLight or borderColorDark
@@ -309,13 +379,11 @@ function SortingRulesPanel:onButtonClick(button)
     elseif button.internal == "INCOMPATIBLE" then
         self:switchEditMode(button, { r = 0.5, g = 0.5, b = 0.5, a = 0.5 })
     elseif button.internal == "APPLY" then
-        if self.editModeData ~= nil then
-            self:applyChanges()
+        self:applyChanges()
 
-            self.editModeData = nil
-            self:switchEditMode()
-            self:onExitSortingRules()
-        end
+        self.editModeData = nil
+        self:switchEditMode()
+        self:onExitSortingRules()
     end
 end
 
