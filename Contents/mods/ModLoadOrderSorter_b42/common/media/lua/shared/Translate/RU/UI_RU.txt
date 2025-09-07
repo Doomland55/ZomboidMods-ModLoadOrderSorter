@@ -8,9 +8,14 @@ UI_RU = {
     UI_MLOS_CurrentRules_Tooltip = "Действующие правила:",
     UI_MLOS_SaveRules_Tooltip = "Сохранить",
     UI_MLOS_ClickCloseWithoutSaving_Tooltip = "Нажмите, чтобы выйти из режима редактирования без сохранения",
-    
     UI_MLOS_SortingRules_apply_btn = "Применить",
     UI_MLOS_SortingRules_incompatible_btn = "Несовместимо",
     UI_MLOS_SortingRules_load_before_btn = "Загрузить перед",
-    UI_MLOS_SortingRules_load_after_btn = "Загрузить после"
+    UI_MLOS_SortingRules_load_after_btn = "Загрузить после",
+    UI_MLOS_SortingRules_yes = "Да",
+    UI_MLOS_SortingRules_no = "Нет",
+    UI_MLOS_SortingRules_in_category = "В категории",
+    UI_MLOS_SortingRules_LoadFirst = "Загрузить первым",
+    UI_MLOS_SortingRules_LoadLast = "Загрузить последним",
+    UI_MLOS_SortingRules_Category = "Категория"
 }

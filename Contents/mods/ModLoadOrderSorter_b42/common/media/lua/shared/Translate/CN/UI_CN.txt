@@ -12,5 +12,11 @@ UI_CN = {
     UI_MLOS_SortingRules_apply_btn = "应用",
     UI_MLOS_SortingRules_incompatible_btn = "不兼容",
     UI_MLOS_SortingRules_load_before_btn = "之前加载",
-    UI_MLOS_SortingRules_load_after_btn = "之后加载"
+    UI_MLOS_SortingRules_load_after_btn = "之后加载",
+    UI_MLOS_SortingRules_yes = "是",
+    UI_MLOS_SortingRules_no = "否",
+    UI_MLOS_SortingRules_in_category = "分类",
+    UI_MLOS_SortingRules_LoadFirst = "以负载为优先",
+    UI_MLOS_SortingRules_LoadLast = "最后装入",
+    UI_MLOS_SortingRules_Category = "类别"
 }

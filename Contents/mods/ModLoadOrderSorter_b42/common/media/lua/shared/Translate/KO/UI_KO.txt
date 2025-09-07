@@ -11,6 +11,12 @@ UI_KO = {
 
     UI_MLOS_SortingRules_apply_btn = "적용",
     UI_MLOS_SortingRules_incompatible_btn = "호환되지 않음",
-    UI_MLOS_SortingRules_load_before_btn = "로드 전",
-    UI_MLOS_SortingRules_load_after_btn = "다음 시간 이후에 로드"
+    UI_MLOS_SortingRules_load_before_btn = "모드 전에 로드",
+    UI_MLOS_SortingRules_load_after_btn = "모드 후 로드",
+    UI_MLOS_SortingRules_yes = "예",
+    UI_MLOS_SortingRules_no = "아니오",
+    UI_MLOS_SortingRules_in_category = "카테고리 내 #",
+    UI_MLOS_SortingRules_LoadFirst = "먼저 로드",
+    UI_MLOS_SortingRules_LoadLast = "마지막 로드",
+    UI_MLOS_SortingRules_Category = "카테고리"
 }
