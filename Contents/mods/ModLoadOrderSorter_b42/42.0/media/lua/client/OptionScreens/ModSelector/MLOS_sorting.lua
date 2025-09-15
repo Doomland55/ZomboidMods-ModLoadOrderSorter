@@ -115,7 +115,7 @@ function ModSorter:readSortingRules()
 	local file = getFileReader(RULES_FILE, true)
 	local line = file:readLine()
 	while line ~= nil do
-		local modname = utils:addSlashToBeginnig(string.match(line, '%[%s*(.-)%s*%]')) -- split line by '=' and trim
+		local modname = utils:addSlashToBeginnig(string.match(line, '^%s*%[%s*(.-)%s*%]%s*$')) -- detect modname
 		if modname ~= nil then curmodname = modname end
 		if curmodname ~= nil then
 			rules[curmodname] = rules[curmodname] or {} -- init rule dict for mod
