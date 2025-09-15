@@ -13,6 +13,7 @@
 local utils = require('OptionScreens/ModSelector/Refr_utils')
 
 local RULES_FILE = "sorting_rules.txt"
+local MOD_VERSION = "1.0.11"
 
 local preorder = { ModManager = 1, ModManagerServer = 2, modoptions = 3 }
 local rawCategoryOrder = { "coreRequirement", "resource", "map", "vehicle", "tweaks", "code", "clothes", "ui", "other",	"translation", "undefined" }
@@ -108,6 +109,13 @@ function ModSorter:saveSortingRules(SR_Data, name)
 	file:close()
 end
 
+function ModSorter:doRulesBackup()
+	local backupname = "backup_"..MOD_VERSION.."_"..RULES_FILE
+	if cacheFileExists(backupname) == false then
+		self:saveSortingRules(self.sortingRulesCache, backupname)
+	end
+end
+
 function ModSorter:readSortingRules()
 	local rules = {}
 	local curmodname = nil
@@ -144,6 +152,7 @@ function ModSorter:readSortingRules()
 	end
 	file:close()
 	self.sortingRulesCache = rules
+	self:doRulesBackup()
 	return rules
 end
 -- /\ ================================== SORTING RULES ================================== /\
