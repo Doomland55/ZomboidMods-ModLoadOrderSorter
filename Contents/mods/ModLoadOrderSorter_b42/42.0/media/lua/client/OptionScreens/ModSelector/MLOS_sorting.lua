@@ -13,10 +13,10 @@
 local utils = require('OptionScreens/ModSelector/Refr_utils')
 
 local RULES_FILE = "sorting_rules.txt"
-local MOD_VERSION = "1.0.12"
+local MOD_VERSION = "1.0.13"
 
 local preorder = { ModManager = 1, ModManagerServer = 2, modoptions = 3 }
-local rawCategoryOrder = { "coreRequirement", "resource", "map", "vehicle", "tweaks", "code", "clothes", "ui", "other",	"translation", "undefined" }
+local rawCategoryOrder = { "coreRequirement", "tweaks", "resource", "map", "vehicle", "code", "clothes", "ui", "other",	"translation", "undefined" }
 local categoryOrder = {}; for i, v in ipairs(rawCategoryOrder) do categoryOrder[v] = i end
 local loadCategories = { on = 0, category = 1, off = 2 }
 
@@ -222,7 +222,7 @@ local function getExtraModInfo(modInfoObj, modObject)
 	end
 
 	-- Mod is Tweak?
-	local frameworkKeys = { "framework", " api", "tweak", "interface", "utilit" } --, "optimize"}
+	local frameworkKeys = { "framework", " api", "_api", "tweak", "interface", "utilit" } --, "optimize"}
 	extraModInfo.flags.isTweak = utils:strContainsAny(extraModInfo.name, frameworkKeys)
 
 	-- Mod with maps?
