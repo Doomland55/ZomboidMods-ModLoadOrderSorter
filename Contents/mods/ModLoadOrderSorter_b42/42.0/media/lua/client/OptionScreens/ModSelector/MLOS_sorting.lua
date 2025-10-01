@@ -13,7 +13,7 @@
 local utils = require('OptionScreens/ModSelector/Refr_utils')
 
 local RULES_FILE = "sorting_rules.txt"
-local MOD_VERSION = "1.0.11"
+local MOD_VERSION = "1.0.12"
 
 local preorder = { ModManager = 1, ModManagerServer = 2, modoptions = 3 }
 local rawCategoryOrder = { "coreRequirement", "resource", "map", "vehicle", "tweaks", "code", "clothes", "ui", "other",	"translation", "undefined" }
@@ -300,13 +300,23 @@ local function initialSortMods(a, b)
 	return a.id:lower() < b.id:lower()
 end
 
+
+local function dependency_cycle_exception(visting_mods)
+	local visited = {}; for k, _ in pairs(visting_mods) do table.insert(visited, k) end
+	error("WARNING: Dependencyes Cycle Detected for " .. utils:getString(visited))
+end
+
+
 local function topological_sort(mods_list, mods_cache)
 	local sorted = {}
 	local visited = {}
 	local visiting = {}
 
 	local function visit(mod)
-		if visiting[mod.id] then error("Dependencyes Cycle Detected for " .. mod.id) end
+		if visiting[mod.id] then
+			pcall(dependency_cycle_exception, visiting)
+			return
+		end
 
 		if not visited[mod.id] then
 			mods_cache[mod.id].warnings = {}
@@ -360,7 +370,11 @@ end
 -- ================================ Validaing ================================
 
 function ModSorter:validateSorting(modsList)
-	self:initModsInfoCache(modsList)
+	local cur_order = self:initModsInfoCache(modsList)
+	local enbled_mods = {}
+	for _, val in ipairs(cur_order) do
+		table.insert(enbled_mods, val.id)
+	end
 
 	-- Validating Order
 	local isCorrectOrder = true
@@ -383,7 +397,7 @@ function ModSorter:validateSorting(modsList)
 		end
 
 		for _, _req in ipairs(_extraModInfo.sortingRules.incompatibleMods) do
-			if self.modsInfoCache[_req] ~= nil then
+			if self.modsInfoCache[_req] ~= nil and utils:contains(enbled_mods, _req) then
 				table.insert(_extraModInfo.warnings.incompatible, _req)
 			end
 		end

@@ -237,8 +237,8 @@ function SortingRulesPanel:onExitSortingRules(onlyUpdate)
     self.loadFirstComboBox.borderColor = borderColorLight
     self.loadLastComboBox.borderColor = borderColorLight
     self.categoryComboBox.borderColor = borderColorLight
-
-    self:updateTooltips()
+    
+    self:updateTooltips(self.modInfoCache)
     self.editModeData = nil
 
     if not onlyUpdate then
