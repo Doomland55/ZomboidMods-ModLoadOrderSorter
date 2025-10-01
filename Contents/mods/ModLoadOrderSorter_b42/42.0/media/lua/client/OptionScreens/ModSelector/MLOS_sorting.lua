@@ -370,7 +370,11 @@ end
 -- ================================ Validaing ================================
 
 function ModSorter:validateSorting(modsList)
-	self:initModsInfoCache(modsList)
+	local cur_order = self:initModsInfoCache(modsList)
+	local enbled_mods = {}
+	for _, val in ipairs(cur_order) do
+		table.insert(enbled_mods, val.id)
+	end
 
 	-- Validating Order
 	local isCorrectOrder = true
@@ -393,7 +397,7 @@ function ModSorter:validateSorting(modsList)
 		end
 
 		for _, _req in ipairs(_extraModInfo.sortingRules.incompatibleMods) do
-			if self.modsInfoCache[_req] ~= nil then
+			if self.modsInfoCache[_req] ~= nil and utils:contains(enbled_mods, _req) then
 				table.insert(_extraModInfo.warnings.incompatible, _req)
 			end
 		end
