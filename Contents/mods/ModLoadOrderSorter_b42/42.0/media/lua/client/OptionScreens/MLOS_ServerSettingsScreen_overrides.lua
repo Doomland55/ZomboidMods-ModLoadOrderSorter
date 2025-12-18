@@ -44,7 +44,7 @@ end
 function MLOS_ServerSettingsScreen_overrides:OnFromClientButton()
     print("[MLOS] Pressed OnFromClientButton")
     self.listbox:clear()
-    local currentClientMods =  getActivatedMods()
+    local currentClientMods = getActivatedMods()
     for i=1, currentClientMods:size() do
         self:addModToList(currentClientMods:get(i-1))
     end
@@ -62,29 +62,33 @@ function MLOS_ServerSettingsScreen_overrides.UpdatedOnNextButton(pageEdit)
     end
 
     local over = function(self)
-        local cur = self.settings:getServerOptions():getOptionByName("WorkshopItems"):getValue()
-        print("[MLOS] Curernt settings:", cur)
+
+        -- local cur = self.settings:getServerOptions():getOptionByName("WorkshopItems"):getValue()
+        -- print("[MLOS] Curernt settings:", cur)
 
         local function getWorkshopIdFromDir(dir) return dir:match("108600\\(%d+)\\") end
 
         local finalData = {}
-        for _, item in ipairs(pageEdit.chooseModsWindow.listbox.items) do
+        for _, item in ipairs(self.listbox.items) do
             local dir = item.item.modInfo:getDir()
             local wsId = getWorkshopIdFromDir(dir)
-            print("[MLOS] checking item: dir=", dir, " wsId=", wsId )
+            -- print("[MLOS] checking item: dir=", dir, " wsId=", wsId )
 
             if wsId and not utils:contains(finalData, wsId) then
                 table.insert(finalData, wsId)
             else
-                print("[MLOS] not found workshopId for", modId)
+                print("[MLOS] not found workshopId for", dir)
             end
         end
-        utils:tprint(finalData)
-        local new = self.settings:getServerOptions():getOptionByName("WorkshopItems"):getValue()
-        print("[MLOS] New settings:", new)
-        
+
         self.settings:getServerOptions():getOptionByName("WorkshopItems"):setValue(table.concat(finalData, ";"))
-        origOnButtonNext(self)
+
+        -- utils:tprint(finalData)
+        -- local new = self.settings:getServerOptions():getOptionByName("WorkshopItems"):getValue()
+        -- print("[MLOS] New settings:", new)
+        
+        -- self.settings:getServerOptions():getOptionByName("WorkshopItems"):setValue(table.concat(finalData, ";"))
+        -- origOnButtonNext(self)
 
 		-- for _, panel in ipairs(self.parent.pageEdit.customui) do
 		-- 	if panel.Type == "ServerSettingsScreenWorkshopPanel" then
@@ -97,6 +101,46 @@ function MLOS_ServerSettingsScreen_overrides.UpdatedOnNextButton(pageEdit)
 		-- 		break
 		-- 	end
 		-- end
+
+        self:setVisible(false)
+
+        local activeMods = ActiveMods.getById("serversettings")
+        local modArray = activeMods:getMods()
+        modArray:clear()
+        for _, item in ipairs(self.listbox.items) do
+            modArray:add(item.item.modID)
+        end
+
+        self.parent.pageEdit.settings = self.settings
+        self.parent.pageEdit.settings:saveFiles()
+        self.parent.pageEdit:aboutToShow()
+        self.parent.pageEdit:setVisible(true, self.joyfocus)
+
+        for _, panel in ipairs(self.parent.pageEdit.customui) do
+            if panel.Type == "ServerSettingsScreenModsPanel" then
+                panel.listbox:clear()
+                for i = 0, modArray:size()-1 do
+                    panel:addModToList(modArray:get(i))
+                end
+            end
+
+            if panel.Type == "ServerSettingsScreenWorkshopPanel" then
+                print("MLOS ServerSettingsScreenWorkshopPanel do: ", panel.settings:getServerOptions():getOptionByName("WorkshopItems"):getValue())
+                utils:tprint(panel.listbox.items)
+                panel.listbox:clear()
+                for _, wsId in ipairs(finalData) do
+                    panel:addItemToList(wsId)
+                end
+                utils:tprint(panel.listbox.items)
+                print("MLOS ServerSettingsScreenWorkshopPanel posle: ", panel.settings:getServerOptions():getOptionByName("WorkshopItems"):getValue())
+			end
+        end
+
+        local reason = "ServerSettingsChange" .. "=" .. self.settings:getName()
+        if ActiveMods.requiresResetLua(activeMods) then
+            getCore():ResetLua("serversettings", reason)
+        end
+        
     end
 
     pageEdit.chooseModsWindow.buttonAccept:setOnClick(over, pageEdit.chooseModsWindow)
