@@ -15,11 +15,9 @@ local utils = require('OptionScreens/ModSelector/Refr_utils')
 
 local rulesTexture = getTexture("media/ui/MLOS_From_Client.png")
 local FONT_HGT_SMALL = getTextManager():getFontHeight(UIFont.Small)
+local FONT_HGT_LARGE = getTextManager():getFontHeight(UIFont.Large)
 local BUTTON_HGT = FONT_HGT_SMALL + 6
 local UI_BORDER_SPACING = 10
-local JOYPAD_TEX_SIZE = 32
-local BUTTON_PADDING = JOYPAD_TEX_SIZE + UI_BORDER_SPACING*2
-
 
 --================================================
 --    ChooseModsWindow add fromClient Button
@@ -37,8 +35,6 @@ local function addPageEditFromClientButton(self, ...)
     self.fromClientBtn:setImage(rulesTexture)
     self.fromClientBtn:setTextureRGBA(1, 1, 1, 0.9)
     self.fromClientBtn:setTooltip("Use mods from client")
-	self.fromClientBtn:getRight()
-    self.fromClientBtn:initialise()
 	self.fromClientBtn:setAnchorLeft(true)
 	self.fromClientBtn:setAnchorTop(false)
 	self.fromClientBtn:setAnchorBottom(true)
@@ -103,6 +99,61 @@ local function overrideOnButtonSave(self, ...)
         origFunc(self)
     end
     self.buttonAccept:setOnClick(override, self)
+end
+
+local function overrideServerSettingsScreenPanelPrerender(self)
+    local options = (self.category == "INI") and self._instance.settings:getServerOptions() or self._instance.settings:getSandboxOptions()
+	local nonDefaultOptions = self._instance.nonDefaultOptions[self.category]
+	for _,settingName in ipairs(self.settingNames) do
+		local label = self.labels[settingName]
+		local control = self.controls[settingName]
+		if label and control then
+			label:setColor(1, 1, 1)
+			local option = nonDefaultOptions:getOptionByName(settingName)
+			if option and (option:getValue() ~= option:getDefaultValue()) then
+				label:setColor(1, 1, 0)
+			end
+        end
+    end
+end
+
+local function fixLayout()
+    local instance = ServerSettingsScreen.instance
+
+    -- Fix server page layout if there are no mods that perform the same function.
+    local skipIfModExists = {"\\ClientModsToServer"}
+    local activeMods = getActivatedMods()
+    for _, modId in ipairs(skipIfModExists) do if activeMods:contains(modId) then return end end
+
+    -- fix window size
+    local core = getCore()
+    local curW = core:getScreenWidth()
+    local curH = core:getScreenHeight()
+    local perc = curW / curH
+    local targetH = curH * 0.78
+    local targetW = targetH * perc
+
+    instance:setX((curW - targetW) * 0.5)
+    instance:setY((curH - targetH) * 0.5)
+    instance:setWidth(targetW)
+    instance:setHeight(targetH)
+    instance:recalcSize()
+    instance:onResolutionChange()
+
+    -- resize chooseModsWindow
+    local chooseModsWindow = instance.pageEdit.chooseModsWindow
+    local lsitboxW = targetW * 0.6
+    chooseModsWindow.listbox:setWidth(lsitboxW)
+    chooseModsWindow.listbox:setHeight(targetH - FONT_HGT_LARGE - UI_BORDER_SPACING * 4 - BUTTON_HGT - 2)
+    chooseModsWindow.listbox:setX(targetW * 0.5 - lsitboxW * 0.5)
+    chooseModsWindow.buttonAccept:setX(targetW - UI_BORDER_SPACING - 1 - chooseModsWindow.buttonAccept:getWidth())
+    chooseModsWindow.buttonMods:setX(targetW * 0.5 - chooseModsWindow.buttonMods:getWidth() * 0.5)
+    chooseModsWindow.fromClientBtn:setX(chooseModsWindow.buttonMods:getRight() + UI_BORDER_SPACING)
+
+    -- fix panels
+
+    -- fix settings boundingbox
+
 end
 
 --================================================
@@ -173,4 +224,7 @@ local function applyOverrides()
     chooseModsWindow.buttonAccept:setOnClick(newChooseModsOnNextButton, chooseModsWindow)
 end
 
+Events.OnResolutionChange.Add(fixLayout)
 Events.OnMainMenuEnter.Add(applyOverrides)
+Events.OnMainMenuEnter.Add(fixLayout)
+
