@@ -17,5 +17,6 @@ UI_DE = {
     UI_MLOS_SortingRules_in_category = "In der Kategorie",
     UI_MLOS_SortingRules_LoadFirst = "Zuerst laden",
     UI_MLOS_SortingRules_LoadLast = "Zuletzt laden",
-    UI_MLOS_SortingRules_Category = "Kategorie"
+    UI_MLOS_SortingRules_Category = "Kategorie",
+    UI_MLOS_FromClientBtn_Tooltip = "Aktuell aktive Client-Mods verwenden"
 }

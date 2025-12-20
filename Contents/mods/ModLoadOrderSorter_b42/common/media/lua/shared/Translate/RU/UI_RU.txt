@@ -17,5 +17,6 @@ UI_RU = {
     UI_MLOS_SortingRules_in_category = "В категории",
     UI_MLOS_SortingRules_LoadFirst = "Загрузить первым",
     UI_MLOS_SortingRules_LoadLast = "Загрузить последним",
-    UI_MLOS_SortingRules_Category = "Категория"
+    UI_MLOS_SortingRules_Category = "Категория",
+    UI_MLOS_FromClientBtn_Tooltip = "Использовать текущие активные клиентские моды"
 }
