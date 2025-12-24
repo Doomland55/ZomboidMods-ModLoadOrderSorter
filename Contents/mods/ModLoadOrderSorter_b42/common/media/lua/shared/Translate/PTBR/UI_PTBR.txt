@@ -17,5 +17,6 @@ UI_PTBR = {
     UI_MLOS_SortingRules_in_category = "na categoria",
     UI_MLOS_SortingRules_LoadFirst = "Carregar primeiro",
     UI_MLOS_SortingRules_LoadLast = "Carregar o Último",
-    UI_MLOS_SortingRules_Category = "Categoria"
+    UI_MLOS_SortingRules_Category = "Categoria",
+    UI_MLOS_FromClientBtn_Tooltip = "Utilizar mods de cliente ativos atuais"
 }

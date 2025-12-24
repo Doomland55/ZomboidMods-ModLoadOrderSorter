@@ -18,5 +18,6 @@ UI_TR = {
     UI_MLOS_SortingRules_in_category = "İçinde kategori",
     UI_MLOS_SortingRules_LoadFirst = "Önce yükle",
     UI_MLOS_SortingRules_LoadLast = "Sonuncuyu Yükle",
-    UI_MLOS_SortingRules_Category = "Kategori"
+    UI_MLOS_SortingRules_Category = "Kategori",
+    UI_MLOS_FromClientBtn_Tooltip = "Mevcut aktif istemci modlarını kullan"
 }
