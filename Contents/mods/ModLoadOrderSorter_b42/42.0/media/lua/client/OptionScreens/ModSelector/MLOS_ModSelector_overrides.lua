@@ -303,3 +303,9 @@ function ModOrderListBoxOverride:onMouseUp(x, y)
     self.dragItem = nil
 end
 
+
+function ModOrderListBoxOverride:onMouseUpOutside(x, y)
+    ISScrollingListBox.onMouseUpOutside(self, x, y)
+    self:onMouseUp(x,y)
+    self.dragItem = nil
+end
