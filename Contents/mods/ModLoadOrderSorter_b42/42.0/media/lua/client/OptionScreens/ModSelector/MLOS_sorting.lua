@@ -348,13 +348,23 @@ end
 function ModSorter:initModsInfoCache(modsList)
     local sortingRules = self:readSortingRules()
 
+	local enabledIds = {}
 	local currentOrder = {}
 	for _, val in ipairs(modsList) do
 		local extraModInfo = self.modsInfoCache[val.item.modId] or getExtraModInfo(val.item.modInfo, val)
 		self:updateExtraModInfoSortingRules(extraModInfo, sortingRules[extraModInfo.id] or {})
 		table.insert(currentOrder, extraModInfo)
+		table.insert(enabledIds, val.item.modId)
 		self.modsInfoCache[val.item.modId] = extraModInfo
 	end
+
+	-- clear cache for not enabled mods
+	for modId, _ in  pairs(self.modsInfoCache) do
+		if not utils:contains(enabledIds, modId) then
+			self.modsInfoCache[modId] = nil
+		end
+	end
+
 	self:updateSortingRulesLoadAfter()
     return currentOrder
 end
