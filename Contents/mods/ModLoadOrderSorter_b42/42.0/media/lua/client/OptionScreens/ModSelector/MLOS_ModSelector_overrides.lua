@@ -306,6 +306,8 @@ end
 
 function ModOrderListBoxOverride:onMouseUpOutside(x, y)
     ISScrollingListBox.onMouseUpOutside(self, x, y)
-    self:onMouseUp(x,y)
+    if self.parent:isMouseOver() then
+        self:onMouseUp(x,y)
+    end
     self.dragItem = nil
 end
