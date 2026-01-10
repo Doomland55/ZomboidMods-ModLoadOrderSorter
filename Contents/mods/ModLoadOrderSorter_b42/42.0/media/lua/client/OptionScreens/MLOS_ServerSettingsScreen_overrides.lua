@@ -183,6 +183,7 @@ end
 --    ChooseModsWindow add fromClient Button
 --================================================
 local function getWorkshopId(modInfo)
+    if modInfo == nil then return nil end
     local workshopId = modInfo:getWorkshopID()
     if not workshopId or workshopId == "" then
         local dir = modInfo:getDir()
@@ -211,12 +212,12 @@ local function newChooseModsWindowOnNextButton(self, ...)
     local modIDs = {}
     local workshopIDs = {}
     for _, item in ipairs(self.listbox.items) do
-        table.insert(modIDs, item.item.modID)
         local workshopId = getWorkshopId(item.item.modInfo)
-        if workshopId and workshopId ~= "" and not utils:contains(workshopIDs, workshopId) then
-            table.insert(workshopIDs, workshopId)
+        if workshopId and workshopId ~= "" then
+            table.insert(modIDs, item.item.modID)
+            utils:MergeTablesDedup(workshopIDs, {workshopId})
         else
-            print("[MLOS] not found workshopId for", item.item.modInfo:getId())
+            pcall(function(modId) error("\n[MLOS] Mod " .. modId .. " not found. Subscribe to the missing mod or save changes to the server configuration (missing mods will be removed from the mod list).") end, item.item.modID)
         end
     end
 
