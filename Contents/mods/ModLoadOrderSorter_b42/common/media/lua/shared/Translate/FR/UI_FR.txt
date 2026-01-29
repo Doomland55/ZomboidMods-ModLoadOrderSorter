@@ -19,5 +19,7 @@ UI_FR = {
     UI_MLOS_SortingRules_LoadFirst = "Charger d'abord",
     UI_MLOS_SortingRules_LoadLast = "Dernier chargement",
     UI_MLOS_SortingRules_Category = "Catégorie",
-    UI_MLOS_FromClientBtn_Tooltip = "Utiliser les mods client actifs actuels"
+    UI_MLOS_FromClientBtn_Tooltip = "Utiliser les mods client actifs actuels",
+    UI_MLOS_SaveToClipboard_Tooltip = "Copier dans le presse-papiers <LINE><RGB:0.8,0.8,0.8>La liste des Mods et WorkshopItems sera copiée dans le presse-papiers",
+    UI_MLOS_SaveToFile_Tooltip = "Enregistrer dans le fichier <LINE><RGB:0.8,0.8,0.8>La liste des Mods et WorkshopItems sera enregistrée dans le fichier '%s' dans le dossier 'Lua'"
 }

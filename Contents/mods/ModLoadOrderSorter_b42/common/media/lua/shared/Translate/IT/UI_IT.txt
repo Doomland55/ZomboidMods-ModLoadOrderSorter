@@ -19,5 +19,7 @@ UI_IT = {
     UI_MLOS_SortingRules_LoadFirst = "Prima carica",
     UI_MLOS_SortingRules_LoadLast = "Carica per ultimo",
     UI_MLOS_SortingRules_Category = "Categoria",
-    UI_MLOS_FromClientBtn_Tooltip = "Usa le attuali mod client attive"
+    UI_MLOS_FromClientBtn_Tooltip = "Usa le attuali mod client attive",
+    UI_MLOS_SaveToClipboard_Tooltip = "Copia negli appunti <LINE><RGB:0.8,0.8,0.8>L'elenco di Mod e WorkshopItem verrà copiato negli appunti",
+    UI_MLOS_SaveToFile_Tooltip = "Salva su file <LINE><RGB:0.8,0.8,0.8>L'elenco di Mod e WorkshopItems verrà salvato nel file '%s' nella cartella 'Lua'"
 }
