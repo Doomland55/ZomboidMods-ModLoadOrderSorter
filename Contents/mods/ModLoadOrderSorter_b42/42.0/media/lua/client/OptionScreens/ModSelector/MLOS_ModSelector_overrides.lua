@@ -23,7 +23,10 @@ local ModLoadOrderPanelOverride = ModSelector.ModLoadOrderPanel
 local ModOrderListBoxOverride = ModSelector.ModOrderListBox
 
 local rulesTexture = getTexture("media/ui/MLOS_Button_Rules.png")
+local toClipboardTexture = getTexture("media/ui/MLOS_To_Clipboard.png")
+local toFileTexture = getTexture("media/ui/MLOS_To_Folder.png")
 
+local modsInfoFileName="sorted_mods_info.ini"
 
 --================================================
 --      ModLoadOrderPanelOverride Overrides
@@ -70,6 +73,40 @@ function ModLoadOrderPanelOverride:createChildren()
     self.searchBtnNext:ignoreWidthChange();
     self.searchBtnNext:ignoreHeightChange();
     self:addChild(self.searchBtnNext);
+
+    self.copyToCBButton = ISButton:new(self.width - 16 - BUTTON_HGT, 16, BUTTON_HGT, BUTTON_HGT, "", self, self.onSaveButton);
+    self.copyToCBButton.internal = "COPY_TO_CB";
+    self.copyToCBButton:initialise();
+    self.copyToCBButton:instantiate();
+    self.copyToCBButton:setAnchorLeft(true);
+    self.copyToCBButton:setAnchorRight(false);
+    self.copyToCBButton:setAnchorTop(false);
+    self.copyToCBButton:setAnchorBottom(true);
+    self.copyToCBButton:setImage(toClipboardTexture);
+    self.copyToCBButton:setTextureRGBA(1,1,1,0.8);
+    self.copyToCBButton.borderColor = {r=1, g=1, b=1, a=0};
+    self.copyToCBButton:setFont(UIFont.Small);
+    self.copyToCBButton:ignoreWidthChange();
+    self.copyToCBButton:ignoreHeightChange();
+    self.copyToCBButton:setTooltip(getText("UI_MLOS_SaveToClipboard_Tooltip"))
+    self:addChild(self.copyToCBButton);
+
+    self.saveToFile = ISButton:new(self.copyToCBButton:getX() - BUTTON_HGT - 8, self.copyToCBButton:getY(), BUTTON_HGT, BUTTON_HGT, "", self, self.onSaveButton);
+    self.saveToFile.internal = "SAVE_TO_FILE";
+    self.saveToFile:initialise();
+    self.saveToFile:instantiate();
+    self.saveToFile:setAnchorLeft(true);
+    self.saveToFile:setAnchorRight(false);
+    self.saveToFile:setAnchorTop(false);
+    self.saveToFile:setAnchorBottom(true);
+    self.saveToFile:setImage(toFileTexture);
+    self.saveToFile:setTextureRGBA(1,1,1,0.8);
+    self.saveToFile.borderColor = {r=1, g=1, b=1, a=0};
+    self.saveToFile:setFont(UIFont.Small);
+    self.saveToFile:ignoreWidthChange();
+    self.saveToFile:ignoreHeightChange();
+    self.saveToFile:setTooltip(string.format(getText("UI_MLOS_SaveToFile_Tooltip"), modsInfoFileName));
+    self:addChild(self.saveToFile);
 
     self.sortingRules = SortingRulesPanel:new(self:getRight(), 0, self.width * 0.3, 180, self.modList)
 	self.sortingRules:initialise()
@@ -123,6 +160,22 @@ function ModLoadOrderPanelOverride:updateCache()
     end
 end
 
+
+function ModLoadOrderPanelOverride:onSaveButton(button)
+    local modIDs, workshopIDs = utils:getModsIDs(self.modList.items)
+
+    local text_parts = {"Mods=", table.concat(modIDs, ";"), "\n", "WorkshopItems=", table.concat(workshopIDs, ";")}
+    if button.internal == "COPY_TO_CB" then 
+        Clipboard.setClipboard(table.concat(text_parts, ""))
+    end
+
+    if button.internal == "SAVE_TO_FILE" then 
+        local file = getFileWriter(modsInfoFileName, true, false)
+        file:write(table.concat(text_parts, ""))
+        file:close()
+    end
+
+end
 
 --================================================
 --           Search Items methods

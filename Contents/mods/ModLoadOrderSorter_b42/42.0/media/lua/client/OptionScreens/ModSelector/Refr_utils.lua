@@ -174,6 +174,31 @@ function Refr_Utils:toKahluaTable(array)
 	return result
 end
 
+function Refr_Utils:getWorkshopId(modInfo)
+    if modInfo == nil then return nil end
+    local workshopId = modInfo:getWorkshopID()
+    if not workshopId or workshopId == "" then
+        local dir = modInfo:getDir()
+        return dir:match("108600\\(%d+)\\")
+    end
+end
+
+function Refr_Utils:getModsIDs(activeModsItems)
+	local modIDs = {}
+    local workshopIDs = {}
+    for _, item in ipairs(activeModsItems) do
+        local workshopId = self:getWorkshopId(item.item.modInfo)
+		local itemId = item.item.modID or item.item.modId or ""
+        if workshopId and workshopId ~= "" then
+            table.insert(modIDs, itemId)
+            self:MergeTablesDedup(workshopIDs, {workshopId})
+        else
+            pcall(function(modId) error("\n[MLOS] Mod " .. modId .. " not found. Subscribe to the missing mod or save changes to the server configuration (missing mods will be removed from the mod list).") end, itemId)
+        end
+    end
+	return modIDs, workshopIDs
+end
+
 function Refr_Utils:tprint(tbl, indent)
 	-- used for debugging
 	if not indent then indent = 0 end
