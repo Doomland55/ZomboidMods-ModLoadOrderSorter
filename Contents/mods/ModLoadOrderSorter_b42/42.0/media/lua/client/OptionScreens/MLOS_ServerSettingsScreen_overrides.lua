@@ -140,7 +140,7 @@ local function fixLayout()
     local instance = ServerSettingsScreen.instance
 
     -- Fix server page layout if there are no mods that perform the same function.
-    local skipIfModExists = { "\\ClientModsToServer" }
+    local skipIfModExists = { "\\ClientModsToServer", "ClientModsToServer" }
     local activeMods = getActivatedMods()
     for _, modId in ipairs(skipIfModExists) do if activeMods:contains(modId) then return end end
 
@@ -182,14 +182,6 @@ end
 --================================================
 --    ChooseModsWindow add fromClient Button
 --================================================
--- local function getWorkshopId(modInfo)
---     if modInfo == nil then return nil end
---     local workshopId = modInfo:getWorkshopID()
---     if not workshopId or workshopId == "" then
---         local dir = modInfo:getDir()
---         return dir:match("108600\\(%d+)\\")
---     end
--- end
 
 local function updateServerActiveMods(mods, settingsName)
     local activeMods = ActiveMods.getById("serversettings")
@@ -209,17 +201,6 @@ local function updateServerActiveMods(mods, settingsName)
 end
 
 local function newChooseModsWindowOnNextButton(self, ...)
-    -- local modIDs = {}
-    -- local workshopIDs = {}
-    -- for _, item in ipairs(self.listbox.items) do
-    --     local workshopId = getWorkshopId(item.item.modInfo)
-    --     if workshopId and workshopId ~= "" then
-    --         table.insert(modIDs, item.item.modID)
-    --         utils:MergeTablesDedup(workshopIDs, {workshopId})
-    --     else
-    --         pcall(function(modId) error("\n[MLOS] Mod " .. modId .. " not found. Subscribe to the missing mod or save changes to the server configuration (missing mods will be removed from the mod list).") end, item.item.modID)
-    --     end
-    -- end
     local modIDs, workshopIDs = utils:getModsIDs(self.listbox.items)
     createSettingsBackup(self.settings)
     self.settings:getServerOptions():getOptionByName("Mods"):setValue(table.concat(modIDs, ";"))

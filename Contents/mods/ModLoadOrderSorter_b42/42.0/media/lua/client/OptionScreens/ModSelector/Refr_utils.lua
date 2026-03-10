@@ -10,6 +10,8 @@ require('luautils')
 local table = table; local pairs = pairs; local ipairs = ipairs; local type = type; local string = string
 local tostring = tostring; local fileExists = fileExists; local getFileSeparator = getFileSeparator
 
+local ZomboidVersionStr = getGameVersion()
+local ZomboidVersionNum = tonumber(string.match(ZomboidVersionStr, "(%d+%.%d+).*"))
 local Refr_Utils = {}
 
 
@@ -20,7 +22,9 @@ end
 
 
 function Refr_Utils:addSlashToBeginnig(value)
-	if type(value) == "string" then return value:gsub("^\\?", "\\") end
+	if type(value) == "string" then
+		return value:gsub("^\\?", ZomboidVersionNum < 42.15 and "\\" or "")
+	end
 
 	if type(value) == "table" then
 		for i, val in ipairs(value) do
@@ -181,6 +185,7 @@ function Refr_Utils:getWorkshopId(modInfo)
         local dir = modInfo:getDir()
         return dir:match("108600\\(%d+)\\")
     end
+	return workshopId
 end
 
 function Refr_Utils:getModsIDs(activeModsItems)
