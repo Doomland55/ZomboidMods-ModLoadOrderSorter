@@ -138,6 +138,7 @@ end
 
 local function fixLayout()
     local instance = ServerSettingsScreen.instance
+    if instance == nil then return end
 
     -- Fix server page layout if there are no mods that perform the same function.
     local skipIfModExists = { "\\ClientModsToServer", "ClientModsToServer" }
