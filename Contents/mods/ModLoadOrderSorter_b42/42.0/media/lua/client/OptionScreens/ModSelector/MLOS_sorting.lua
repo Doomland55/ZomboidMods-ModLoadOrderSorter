@@ -57,6 +57,7 @@ function ModSorter:addSortingRule(modId, loadAfter, loadBefore, incompatibleMods
 	local text = getSRDataText(modId, loadAfter, loadBefore, incompatibleMods, loadfirst, loadlast, category)
 	if text~=nil then file:write(text) end
 	file:close()
+	self.sortingRulesCache = nil
 end
 
 function ModSorter:updateSortingRule(modId, loadAfter, loadBefore, incompatibleMods, loadfirst, loadlast, category)
