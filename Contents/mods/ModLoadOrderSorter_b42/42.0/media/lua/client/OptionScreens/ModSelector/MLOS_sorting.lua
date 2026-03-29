@@ -13,8 +13,8 @@
 local utils = require('OptionScreens/ModSelector/Refr_utils')
 
 local RULES_FILE = "sorting_rules.txt"
-local MOD_VERSION = "1.1.0"  -- b42.15.1
-
+local MOD_VERSION = "1.1.1"  -- b42.15.1 @Zed suggestions
+ 
 local preorder = { ModManager = 1, ModManagerServer = 2, modoptions = 3 }
 local rawCategoryOrder = { "coreRequirement", "tweaks", "resource", "map", "vehicle", "code", "clothes", "ui", "other",	"translation", "undefined" }
 local categoryOrder = {}; for i, v in ipairs(rawCategoryOrder) do categoryOrder[v] = i end
@@ -23,6 +23,7 @@ local loadCategories = { on = 0, category = 1, off = 2 }
 
 local ModSorter = {}
 ModSorter.modsInfoCache = {}
+ModSorter.sortingRulesCache = {}
 
 ---@return table
 function ModSorter:getRawCategoryOrder() return rawCategoryOrder end
@@ -56,10 +57,11 @@ function ModSorter:addSortingRule(modId, loadAfter, loadBefore, incompatibleMods
 	local text = getSRDataText(modId, loadAfter, loadBefore, incompatibleMods, loadfirst, loadlast, category)
 	if text~=nil then file:write(text) end
 	file:close()
+	self.sortingRulesCache = nil
 end
 
 function ModSorter:updateSortingRule(modId, loadAfter, loadBefore, incompatibleMods, loadfirst, loadlast, category)
-	if self.sortingRulesCache == nil then self:readSortingRules() end
+	self:readSortingRules()
 
 	local modData = self.modsInfoCache[modId]
 	local rulesFromFile = self.sortingRulesCache[modId] or {}
@@ -117,6 +119,8 @@ function ModSorter:doRulesBackup()
 end
 
 function ModSorter:readSortingRules()
+	if not utils:tableIsEmpty(self.sortingRulesCache) then return self.sortingRulesCache end
+
 	local rules = {}
 	local curmodname = nil
 
@@ -158,7 +162,6 @@ end
 -- /\ ================================== SORTING RULES ================================== /\
 
 local function readModInfoFile(modId)
-	-- read mod.info file
 	local result = {}
 
 	local file = getModFileReader(modId, "mod.info", false)
@@ -193,6 +196,7 @@ local function readModInfoFile(modId)
 	end
 	file:close()
 
+	return result
 end
 
 
@@ -344,27 +348,25 @@ local function topological_sort(mods_list, mods_cache)
 	return sorted
 end
 
-
 function ModSorter:initModsInfoCache(modsList)
     local sortingRules = self:readSortingRules()
 
 	local enabledIds = {}
 	local currentOrder = {}
 	for _, val in ipairs(modsList) do
-		local extraModInfo = self.modsInfoCache[val.item.modId] or getExtraModInfo(val.item.modInfo, val)
+		local modId = val.item.modId
+		local extraModInfo = self.modsInfoCache[modId] or getExtraModInfo(val.item.modInfo, val)
 		self:updateExtraModInfoSortingRules(extraModInfo, sortingRules[extraModInfo.id] or {})
 		table.insert(currentOrder, extraModInfo)
-		table.insert(enabledIds, val.item.modId)
-		self.modsInfoCache[val.item.modId] = extraModInfo
+		enabledIds[modId] = true
+		self.modsInfoCache[modId] = extraModInfo
 	end
 
-	-- clear cache for not enabled mods
-	for modId, _ in  pairs(self.modsInfoCache) do
-		if not utils:contains(enabledIds, modId) then
+	for modId, _ in pairs(self.modsInfoCache) do
+		if not enabledIds[modId] then
 			self.modsInfoCache[modId] = nil
 		end
 	end
-
 	self:updateSortingRulesLoadAfter()
     return currentOrder
 end
@@ -383,7 +385,7 @@ function ModSorter:validateSorting(modsList)
 	local cur_order = self:initModsInfoCache(modsList)
 	local enbled_mods = {}
 	for _, val in ipairs(cur_order) do
-		table.insert(enbled_mods, val.id)
+		enbled_mods[val.id] = true
 	end
 
 	-- Validating Order
@@ -394,24 +396,24 @@ function ModSorter:validateSorting(modsList)
 		_extraModInfo.warnings = {incompatible = {}, missing={}, rules={}}
 
 		for _, _req in ipairs(_extraModInfo.requirements) do
-			if not utils:contains(checkedIds, _req) then
+			if not checkedIds[_req] then
 				isCorrectOrder = false
 				table.insert(_extraModInfo.warnings.missing, _req)
 			end
 		end
 
 		for _, _req in ipairs(_extraModInfo.sortingRules.loadAfter) do
-			if self.modsInfoCache[_req] ~= nil and not utils:contains(checkedIds, _req) then
+			if self.modsInfoCache[_req] and not checkedIds[_req] then
 				table.insert(_extraModInfo.warnings.rules, _req)
 			end
 		end
 
 		for _, _req in ipairs(_extraModInfo.sortingRules.incompatibleMods) do
-			if self.modsInfoCache[_req] ~= nil and utils:contains(enbled_mods, _req) then
+			if self.modsInfoCache[_req] and enbled_mods[_req] then
 				table.insert(_extraModInfo.warnings.incompatible, _req)
 			end
 		end
-		table.insert(checkedIds, _extraModInfo.id)
+		checkedIds[_extraModInfo.id] = true
 	end
 	return isCorrectOrder
 end

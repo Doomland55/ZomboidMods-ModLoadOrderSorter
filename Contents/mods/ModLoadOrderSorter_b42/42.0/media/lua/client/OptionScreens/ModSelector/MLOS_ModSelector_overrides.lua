@@ -31,8 +31,28 @@ local modsInfoFileName="sorted_mods_info.ini"
 --================================================
 --      ModLoadOrderPanelOverride Overrides
 --================================================
+local origInstantiate = ModLoadOrderPanelOverride.instantiate
 local origCreateChildren = ModLoadOrderPanelOverride.createChildren
 local origOnMouseUpOutside = ModLoadOrderPanelOverride.onMouseUpOutside
+
+function ModLoadOrderPanelOverride:instantiate()
+    local modArray = self.model:getActiveMods():getMods():clone()
+    local missedMods = {}
+
+    for i = 0, modArray:size()-1 do
+        local modId = modArray:get(i)
+        if modId ~= nil and not self.model.mods[modId] then
+            self.model:setModActive(modId, false)
+            table.insert(missedMods, modId)
+        end
+    end
+
+    if not utils:tableIsEmpty(missedMods) then
+        pcall(function(missedMods) error("\n[ERROR] --> [MLOS] Mods: [" .. table.concat(missedMods, ', ') .. "] were not found. They will be disabled to prevent the game from crashing.\n") end, missedMods)
+    end
+
+    origInstantiate(self)
+end
 
 
 function ModLoadOrderPanelOverride:createChildren()
