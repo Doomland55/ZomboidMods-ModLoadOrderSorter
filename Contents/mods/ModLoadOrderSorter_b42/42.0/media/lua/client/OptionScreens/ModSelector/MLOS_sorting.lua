@@ -104,7 +104,13 @@ function ModSorter:saveSortingRules(SR_Data, name)
 	local file_data = SR_Data or self.sortingRulesCache
 
 	local file = getFileWriter(file_name, true, false)
-	for modId, data in pairs(file_data) do
+	local modIds = {}
+	for modId, _ in pairs(file_data) do
+		table.insert(modIds, modId)
+	end
+	table.sort(modIds, function(a, b) return tostring(a):lower() < tostring(b):lower() end)
+	for _, modId in ipairs(modIds) do
+		local data = file_data[modId]
 		local text = getSRDataText(modId, data.loadAfter, data.loadBefore, data.incompatibleMods, data.loadFirst, data.loadLast, data.category)
 		if text~=nil then file:write(text) end
 	end
@@ -217,7 +223,7 @@ local function getExtraModInfo(modInfoObj, modObject)
 		object = modObject
 	}
 
-	extraModInfo = utils:MergeTablesDedup(extraModInfo, readModInfoFile())
+	extraModInfo = utils:MergeTablesDedup(extraModInfo, readModInfoFile(extraModInfo.id))
 
 	if categoryOrder[extraModInfo.category] == nil then
 		extraModInfo.category = "undefined"
