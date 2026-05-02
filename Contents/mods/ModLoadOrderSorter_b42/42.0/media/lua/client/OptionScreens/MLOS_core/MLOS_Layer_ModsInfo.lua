@@ -38,9 +38,9 @@ local function getPriority(mod)
 end
 
 
-local function getFlags(directories, name, maps, id)
+local function getFlags(directories, name, maps)
 	local flags = {}
-	flags.isTweak = utils:strContainsAny(name, core.frameworkKeys)
+	flags.isTweak = utils:strContainsAny(name, core.tweakKeys)
 	flags.isMap = not utils:tableIsEmpty(maps)
 
 	-- check the remaining flags based on the existence of specific folders or files
@@ -124,8 +124,7 @@ function MLOS_ModsInfo:getExtraModInfo(modInfoObj, modObject)
 		return extraModInfo
 	end
 	
-
-	extraModInfo.flags = getFlags( { modInfoObj:getVersionDir(), modInfoObj:getCommonDir() } , extraModInfo.name, extraModInfo.maps, extraModInfo.id )
+	extraModInfo.flags = getFlags( { modInfoObj:getVersionDir(), modInfoObj:getCommonDir() } , extraModInfo.name, extraModInfo.maps )
 	extraModInfo.category = getCategory(extraModInfo.flags)
 	
 	local temp_flags = {}
@@ -156,12 +155,12 @@ function MLOS_ModsInfo:UpdateData(modsList, sortingRulesCache)
 	end
 
 	for curmod, modinfo in pairs(self.data) do
-		local loadbefore = modinfo.sortingRules.loadBefore
+		local loadbefore = utils:MergeTablesDedup({}, modinfo.loadBefore, modinfo.sortingRules.loadBefore)
 		if loadbefore ~= nil then
 			for _, val in ipairs(loadbefore) do
 				local valModInfo = self.data[val]
 				if val ~= nil and valModInfo ~= nil then
-					valModInfo.fixedLoadAfter = utils:MergeTablesDedup(valModInfo.fixedLoadAfter or {}, { curmod })
+					utils:MergeTablesDedup(valModInfo.fixedLoadAfter, { curmod })
 				end
 			end
 		end

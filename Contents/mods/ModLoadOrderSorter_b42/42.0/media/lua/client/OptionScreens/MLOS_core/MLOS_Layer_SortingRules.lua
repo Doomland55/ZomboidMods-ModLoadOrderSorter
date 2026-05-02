@@ -62,14 +62,15 @@ end
 
 ---@return table rules sorting rules from file
 function MLOS_SortingRules:readSortingRules()
-	if cacheFileExists(RULES_FILE) == false then  -- support auto moving sorting rules to the separate mod folder
+	-- support auto moving sorting rules to the separate mod folder. will be removed after some game versions (initially added for b42.17.0)
+	if cacheFileExists(RULES_FILE) == false then  
 		if cacheFileExists(RULES_NAME) == false then self:saveSortingRules(); return self.data end
 		self.data = core:readTxtFile(RULES_NAME, function(addTo, line) return core:getDataFromString(line, addTo) end )
 		self:saveSortingRules(self.data, RULES_FILE)
 		self:doRulesBackup()
 		return self.data
 	end
-	
+
 	self.data = core:readTxtFile(RULES_FILE, function(addTo, line) return core:getDataFromString(line, addTo) end)
 	self:doRulesBackup()
 	return self.data

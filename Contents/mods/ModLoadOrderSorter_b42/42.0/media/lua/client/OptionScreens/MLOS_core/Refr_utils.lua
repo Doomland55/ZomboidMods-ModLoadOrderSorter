@@ -85,13 +85,14 @@ function Refr_Utils:isExists(modDir, path)
 	return true
 end
 
-local function _mergeTables(result, skip_duplicates, ...)
-	local tables = { ... }
-	if #tables < 1 then return result end
 
-	for _, from in ipairs(tables) do
+local function _mergeTables(result, skip_duplicates, ...)
+	local tables = {_n = select("#", ...), ...}
+	if tables._n < 1 then return result end
+
+	for i = 1, tables._n do
 		-- merge "from" table to "result". add values if list, update if dict and paste if missing
-		for k, v in pairs(from) do
+		for k, v in pairs(tables[i] or {}) do
 			if type(k) == "number" then
 				if skip_duplicates == false or not Refr_Utils:contains(result, v) then
 					table.insert(result, v)
@@ -108,6 +109,7 @@ local function _mergeTables(result, skip_duplicates, ...)
 	end
 	return result
 end
+
 
 function Refr_Utils:MergeTables(result, ...) return _mergeTables(result, false, ...) end
 

@@ -1,6 +1,6 @@
 ---
----	This mod updates the behavior of automatic sorting, added to the Project Zomboid build 42.0. 
---- Adds own topological sorting algorithm for mods load order, 
+---	This mod updates the behavior of automatic sorting, added to the Project Zomboid build 42.0.
+--- Adds own topological sorting algorithm for mods load order,
 --- and adds support for sorting rules from the file sorting_rules.txt.
 ---
 --- Details about this mod:
@@ -14,7 +14,6 @@
 local utils = require('OptionScreens/MLOS_core/Refr_utils')
 local ModsInfo = require('OptionScreens/MLOS_core/MLOS_Layer_ModsInfo')
 local SortingRules = require('OptionScreens/MLOS_core/MLOS_Layer_SortingRules')
-local WorkshopInfo = require('OptionScreens/MLOS_core/MLOS_Layer_WorkshopInfo')
 
 local ModSorter = {}
 
@@ -24,10 +23,10 @@ local function _compareModIds(aId, bId)
 	if a == nil or b == nil then
 		return tostring(aId):lower() < tostring(bId):lower()
 	end
-    if a.priority ~= b.priority then
-        return a.priority > b.priority
-    end
-    return a.id:lower() < b.id:lower()  -- Если приоритеты равны, сортируем по имени
+	if a.priority ~= b.priority then
+		return a.priority > b.priority
+	end
+	return a.id:lower() < b.id:lower()
 end
 
 
@@ -47,7 +46,7 @@ local function topologicalSort(modsList, modsCache)
 			pcall(dependencyCycleException, visiting)
 			return
 		end
-		
+
 		if not visited[mod.id] then
 			visiting[mod.id] = true
 			for _, dep in ipairs(mod.requirements) do
@@ -76,8 +75,7 @@ end
 
 
 function ModSorter:sortModsOrder(mods_list)
-	print("[MLOS] Preparing mods cache!")
-    SortingRules:readSortingRules()
+	SortingRules:readSortingRules()
 	local currentOrder = ModsInfo:UpdateData(mods_list, SortingRules.data)
 
 	print("[MLOS] Mods sorting STARTED!")
@@ -88,9 +86,9 @@ end
 -- ================================ Validaing ================================
 
 function ModSorter:validateSorting(modsList)
-    SortingRules:readSortingRules()
+	SortingRules:readSortingRules()
 	local curOrder = ModsInfo:UpdateData(modsList, SortingRules.data)
-	
+
 	local enbledMods = {}
 	for _, val in ipairs(curOrder) do
 		enbledMods[val.id] = true
@@ -100,25 +98,28 @@ function ModSorter:validateSorting(modsList)
 	local isCorrectOrder = true
 	local checkedIds = {}
 	for _, val in ipairs(modsList) do
-		local sortingRrules = SortingRules[val.item.modId] or {}
 		local extraModInfo = ModsInfo.data[val.item.modId]
-		extraModInfo.warnings = {incompatible = {}, missing={}, rules={}}
+		extraModInfo.warnings = { incompatible = {}, missing = {}, wrongOrder = {},  rules = {} }
 
 		for _, _req in ipairs(extraModInfo.requirements or {}) do
 			if not checkedIds[_req] then
 				isCorrectOrder = false
-				table.insert(extraModInfo.warnings.missing, _req)
+				if enbledMods[_req] then
+					table.insert(extraModInfo.warnings.wrongOrder, _req)
+				else
+					table.insert(extraModInfo.warnings.missing, _req)
+				end
 			end
 		end
 
-		for _, _req in ipairs(sortingRrules.loadAfter or {}) do
-			if self.modsInfoCache[_req] and not checkedIds[_req] then
+		for _, _req in ipairs(extraModInfo.fixedLoadAfter or {}) do
+			if enbledMods[_req] and not checkedIds[_req] then
 				table.insert(extraModInfo.warnings.rules, _req)
 			end
 		end
 
-		for _, _req in ipairs(sortingRrules.incompatibleMods or {}) do
-			if self.modsInfoCache[_req] and enbledMods[_req] then
+		for _, _req in ipairs(utils:MergeTablesDedup({}, extraModInfo.incompatibleMods, extraModInfo.sortingRules.incompatibleMods)) do
+			if enbledMods[_req] then
 				table.insert(extraModInfo.warnings.incompatible, _req)
 			end
 		end
