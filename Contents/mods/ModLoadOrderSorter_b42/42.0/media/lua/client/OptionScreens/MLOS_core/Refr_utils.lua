@@ -20,15 +20,14 @@ function Refr_Utils:clamp(value, min, max)
 	return (value < min and min) or (value > max and max) or value
 end
 
-
-function Refr_Utils:addSlashToBeginnig(value)
+function Refr_Utils:fixSlash(value)
 	if type(value) == "string" then
 		return value:gsub("^\\?", ZomboidVersionNum < 42.15 and "\\" or "")
 	end
 
 	if type(value) == "table" then
 		for i, val in ipairs(value) do
-			value[i] = self:addSlashToBeginnig(val)
+			value[i] = self:fixSlash(val)
 		end
 	end
 	return value
@@ -116,7 +115,7 @@ function Refr_Utils:MergeTablesDedup(result, ...) return _mergeTables(result, tr
 
 function Refr_Utils:splitStringBySeparator(input_str, separator)
 	local result = {}
-	local pattern = string.format("([^%s]+)", separator or ",")
+	local pattern = string.format("([^%s]+)", separator or ",;")
 	local fixed_equals = input_str:gsub("%w+%s*=", "")
 	fixed_equals:gsub(pattern, function(c) result[#result + 1] = luautils.trim(c) end)
 	return result
@@ -179,28 +178,32 @@ function Refr_Utils:toKahluaTable(array)
 end
 
 function Refr_Utils:getWorkshopId(modInfo)
-    if modInfo == nil then return nil end
-    local workshopId = modInfo:getWorkshopID()
-    if not workshopId or workshopId == "" then
-        local dir = modInfo:getDir()
-        return dir:match("108600\\(%d+)\\")
-    end
+	if modInfo == nil then return nil end
+	local workshopId = modInfo:getWorkshopID()
+	if not workshopId or workshopId == "" then
+		local dir = modInfo:getDir()
+		return dir:match("108600\\(%d+)\\")
+	end
 	return workshopId
 end
 
 function Refr_Utils:getModsIDs(activeModsItems)
 	local modIDs = {}
-    local workshopIDs = {}
-    for _, item in ipairs(activeModsItems) do
-        local workshopId = self:getWorkshopId(item.item.modInfo)
+	local workshopIDs = {}
+	for _, item in ipairs(activeModsItems) do
+		local workshopId = self:getWorkshopId(item.item.modInfo)
 		local itemId = item.item.modID or item.item.modId or ""
-        if workshopId and workshopId ~= "" then
-            table.insert(modIDs, itemId)
-            self:MergeTablesDedup(workshopIDs, {workshopId})
-        else
-            pcall(function(modId) error("\n[MLOS] Mod " .. modId .. " not found. Subscribe to the missing mod or save changes to the server configuration (missing mods will be removed from the mod list).") end, itemId)
-        end
-    end
+		if workshopId and workshopId ~= "" then
+			table.insert(modIDs, itemId)
+			self:MergeTablesDedup(workshopIDs, { workshopId })
+		else
+			pcall(
+			function(modId) error("\n[MLOS] Mod " ..
+				modId ..
+				" not found. Subscribe to the missing mod or save changes to the server configuration (missing mods will be removed from the mod list).") end,
+				itemId)
+		end
+	end
 	return modIDs, workshopIDs
 end
 

@@ -11,8 +11,9 @@
 --- This mod has no dependencies
 ---
 require "ISUI/ISPanelJoypad"
-local utils = require('OptionScreens/ModSelector/Refr_utils')
-local MLOS_sorting = require('OptionScreens/ModSelector/MLOS_sorting')
+local utils = require('OptionScreens/MLOS_core/Refr_utils')
+local core = require('OptionScreens/MLOS_core/MLOS_Core')
+local sortingRules = require('OptionScreens/MLOS_core/MLOS_Layer_SortingRules')
 
 local SortingRulesPanel = ISPanelJoypad:derive("SortingRulesPanel")
 
@@ -106,13 +107,13 @@ function SortingRulesPanel:createChildren()
     -- loadFirst
     self.loadFirstComboBox = ISComboBox:new(PADDING, self.incompatible:getBottom() + PADDING, self.width - PADDING * 2, BUTTON_HGT, self, self.onComboBoxChange)
     self.loadFirstComboBox.borderColor = borderColorLight
-    for name, _ in pairs(MLOS_sorting:getLoadCategories()) do self.loadFirstComboBox:addOptionWithData(loadFirstTr .. ": " .. loadTr[name], name) end
+    for name, _ in pairs(core.loadCategories) do self.loadFirstComboBox:addOptionWithData(loadFirstTr .. ": " .. loadTr[name], name) end
     self:addChild(self.loadFirstComboBox)
 
     -- loadLast
     self.loadLastComboBox = ISComboBox:new(PADDING, self.loadFirstComboBox:getBottom() + PADDING, self.width - PADDING * 2, BUTTON_HGT, self, self.onComboBoxChange)
     self.loadLastComboBox.borderColor = borderColorLight
-    for name, _ in pairs(MLOS_sorting:getLoadCategories()) do self.loadLastComboBox:addOptionWithData(loadLastTr .. ": " .. loadTr[name], name) end
+    for name, _ in pairs(core.loadCategories) do self.loadLastComboBox:addOptionWithData(loadLastTr .. ": " .. loadTr[name], name) end
     self:addChild(self.loadLastComboBox)
 
     -- category 
@@ -165,7 +166,7 @@ end
 function SortingRulesPanel:updateComboBoxValues(modInfo)
     self.categoryComboBox:clear()
     local categoryTr = getText("UI_MLOS_SortingRules_Category")
-    for _, name in pairs(MLOS_sorting:getRawCategoryOrder()) do
+    for _, name in pairs(core.rawCategoryOrder) do
         self.categoryComboBox:addOptionWithData(categoryTr .. ": " .. (modInfo.category == name and name .. " *" or name), name)
     end
 
@@ -300,15 +301,37 @@ function SortingRulesPanel:applyChanges()
     --               self.editModeData.type == "INCOMPATIBLE" and self.modInfoCache.sortingRules.incompatibleMods or nil
     -- local rulesFromFile = utils:tableDifference(devRules, rules)
 
-    -- add mod only if they are not in dev rules
-    local modlist = {}
     local editModeData = self.editModeData or {}
+
+    -- If we're in Edit Mode (loadAfter/loadBefore/incompatible selection via clicking mods),
+    -- keep the existing behavior: apply list changes only for the currently opened mod.
+    local modlist = {}
     if self.editModeData ~= nil then
         for modId, color in pairs(self.editModeData.curRules) do
             if color == self.editModeData.color then
                 table.insert(modlist, modId)
             end
         end
+    end
+
+    -- In normal mode (combobox changes), allow bulk-apply to all currently multiselected mods.
+    local targetModIds = {}
+    if self.editModeData == nil then
+        local indices = (self.modListObj and self.modListObj.parent and self.modListObj.parent.multiselected) or {}
+        if not utils:tableIsEmpty(indices) then
+            for _, index in ipairs(indices) do
+                local item = self.modListObj.items[index]
+                local modId = item and item.item and item.item.modId
+                if modId ~= nil and not utils:contains(targetModIds, modId) then
+                    table.insert(targetModIds, modId)
+                end
+            end
+        end
+    end
+
+    -- Fallback: if nothing selected, apply to the currently opened mod.
+    if utils:tableIsEmpty(targetModIds) and self.modInfoCache ~= nil and self.modInfoCache.id ~= nil then
+        targetModIds = { self.modInfoCache.id }
     end
     
     -- local newRules = utils:tableDifference(modlist, rulesFromFile)
@@ -331,14 +354,16 @@ function SortingRulesPanel:applyChanges()
 
     -- end
 
-    MLOS_sorting:updateSortingRule(self.modInfoCache.id,
-                                   editModeData.type == "LOAD_AFTER" and modlist or nil,
-                                   editModeData.type == "LOAD_BEFORE" and modlist or nil,
-                                   editModeData.type == "INCOMPATIBLE" and modlist or nil,
-                                   self.loadFirstComboBox:getOptionData(self.loadFirstComboBox.selected),
-                                   self.loadLastComboBox:getOptionData(self.loadLastComboBox.selected),
-                                   self.categoryComboBox:getOptionData(self.categoryComboBox.selected))
-    MLOS_sorting:saveSortingRules()
+    for _, modId in ipairs(targetModIds) do
+        sortingRules:updateSortingRule(modId,
+                                       {loadAfter = editModeData.type == "LOAD_AFTER" and modlist or nil,
+                                        loadBefore = editModeData.type == "LOAD_BEFORE" and modlist or nil,
+                                        incompatibleMods = editModeData.type == "INCOMPATIBLE" and modlist or nil,
+                                        loadFirst = self.loadFirstComboBox:getOptionData(self.loadFirstComboBox.selected),
+                                        loadLast = self.loadLastComboBox:getOptionData(self.loadLastComboBox.selected),
+                                        category = self.categoryComboBox:getOptionData(self.categoryComboBox.selected)})
+    end
+    sortingRules:saveSortingRules()
     self.modListObj:updateModsColor()
 end
 

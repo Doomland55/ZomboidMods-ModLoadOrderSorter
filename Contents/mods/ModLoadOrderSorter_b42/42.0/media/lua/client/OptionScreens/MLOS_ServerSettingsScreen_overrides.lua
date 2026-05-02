@@ -11,7 +11,7 @@
 --- This mod has no dependencies
 ---
 require "OptionScreens/ServerSettingsScreen"
-local utils = require('OptionScreens/ModSelector/Refr_utils')
+local utils = require('OptionScreens/MLOS_core/Refr_utils')
 
 local rulesTexture = getTexture("media/ui/MLOS_From_Client.png")
 local FONT_HGT_SMALL = getTextManager():getFontHeight(UIFont.Small)

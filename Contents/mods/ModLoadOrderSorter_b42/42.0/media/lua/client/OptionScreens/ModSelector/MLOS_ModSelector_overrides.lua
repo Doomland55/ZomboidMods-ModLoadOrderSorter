@@ -11,9 +11,10 @@
 --- This mod has no dependencies
 ---
 require('OptionScreens/ModSelector/ModSelector')
-local utils = require('OptionScreens/ModSelector/Refr_utils')
-local MLOS_methods = require('OptionScreens/ModSelector/MLOS_Methods')
-local MLOS_sorting = require('OptionScreens/ModSelector/MLOS_sorting')
+local utils = require('OptionScreens/MLOS_core/Refr_utils')
+local MLOS_methods = require('OptionScreens/MLOS_core/MLOS_Methods')
+local MLOS_sorting = require('OptionScreens/MLOS_core/MLOS_SortingCore')
+local MLOS_ModInfoLayer = require('OptionScreens/MLOS_core/MLOS_Layer_ModsInfo')
 local SortingRulesPanel = require('OptionScreens/ModSelector/MLOS_SortingRulesPanel')
 
 local FONT_HGT_SMALL = getTextManager():getFontHeight(UIFont.Small)
@@ -273,7 +274,7 @@ function ModOrderListBoxOverride:updateModsColor()
     self.parent.acceptButton.enable = MLOS_sorting:validateSorting(self.items)
     for i, val in ipairs(self.items) do
         val.itemindex = i  -- update item index
-		local extraModInfo = MLOS_sorting.modsInfoCache[val.item.modId]
+		local extraModInfo = MLOS_ModInfoLayer.data[val.item.modId]
         if extraModInfo ~= nil then
             if not utils:tableIsEmpty(extraModInfo.warnings.missing) then
                 val.color = {r = 0.98, g = 0.08, b = 0.08}
@@ -335,7 +336,7 @@ function ModOrderListBoxOverride:onMouseDown(x, y)
     local row = utils:clamp(self:rowAt(x, y), 1, #self.items)
 
     if self.parent.sortingRules:onClickItemInList(self.mouseOverRulesIcon, self.items[row]) then
-        if not utils:tableIsEmpty(self.parent.multiselected) then self.parent.multiselected = {} end
+        -- if not utils:tableIsEmpty(self.parent.multiselected) then self.parent.multiselected = {} end
         return
     end
 

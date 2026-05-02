@@ -1,4 +1,4 @@
-local utils = require('OptionScreens/ModSelector/Refr_utils')
+local utils = require('OptionScreens/MLOS_core/Refr_utils')
 
 local MLOSMethods = {}
 
