@@ -12,15 +12,18 @@ function MLOSMethods:getTooltipText(extraModInfo)
     end
 
     local text = ""
-    text = text .. addText(" <RGB:0.98,0.08,0.08> " .. getText("UI_ModManagerLoadOrderSorter_MissingDependency_Warning"), extraModInfo.warnings.missing)
+    text = text .. addText(" <RGB:0.98,0.08,0.08> " .. getText("UI_ModManagerLoadOrderSorter_Missing_Warning"), extraModInfo.warnings.missing)
+    text = text .. addText(" <RGB:0.88,0.08,0.08> " .. getText("UI_ModManagerLoadOrderSorter_WrongOrder_Warning"), extraModInfo.warnings.wrongOrder)
     text = text .. addText(" <RGB:0.65,0.08,0.90> " .. getText("UI_ModManagerLoadOrderSorter_Incompatible_Warning"), extraModInfo.warnings.incompatible)
-    text = text .. addText(" <RGB:0.98,0.66,0.06> " .. getText("UI_ModManagerLoadOrderSorter_WrongOrder_Warning"), extraModInfo.warnings.rules)
+    text = text .. addText(" <RGB:0.98,0.66,0.06> " .. getText("UI_ModManagerLoadOrderSorter_Rules_Warning"), extraModInfo.warnings.rules)
 
     local debugText = ""
-    if isDebugEnabled() == true then
+    if true or isDebugEnabled() == true then
         local _names = {"category", "requirements", "flags", "maps"}
         debugText = utils:getString(extraModInfo, 0, _names)
-        debugText = debugText ..utils:getString(extraModInfo.sortingRules, 0)
+        if not utils:tableIsEmpty(extraModInfo.sortingRules) then
+            debugText = debugText .. "\n<RGB:1.0,0.98,0.804>SortingRules:" .. utils:getString(extraModInfo.sortingRules, 0) .. "\n<RGB:0.8,0.8,0.8>"
+        end
         debugText = debugText:match( "^%s*(.-)%s*$" )
     end
     return extraModInfo.id:gsub("\\", "") .. "\n" .. text .. debugText
@@ -28,6 +31,8 @@ end
 
 
 function MLOSMethods:selectObject(multiselected, row, ctrlPressed, shiftPressed)
+    if row <= 0 then return multiselected end
+    
     local selectedIndices = multiselected
 
     local function toggleNumberInArray(array, number)
