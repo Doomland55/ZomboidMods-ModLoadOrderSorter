@@ -1,8 +1,9 @@
 {
     "UI_modselector_auto": "Organizar",
-    "UI_ModManagerLoadOrderSorter_MissingDependency_Warning": "As dependências estão ausentes ou na ordem errada",
+    "UI_ModManagerLoadOrderSorter_Missing_Warning": "Faltam dependências",
+    "UI_ModManagerLoadOrderSorter_WrongOrder_Warning": "As dependências estão na ordem errada",
     "UI_ModManagerLoadOrderSorter_Incompatible_Warning": "Mods incompatíveis encontrados",
-    "UI_ModManagerLoadOrderSorter_WrongOrder_Warning": "Os seguintes mods devem ser colocados acima (devido às regras de classificação)",
+    "UI_ModManagerLoadOrderSorter_Rules_Warning": "Os seguintes mods devem ser colocados acima (devido às regras de classificação)",
     "UI_MLOS_SortingRules": "regras de ordenação",
     "UI_MLOS_ClickEditMode_Tooltip": "Clique para entrar no Modo de Edição",
     "UI_MLOS_CurrentRules_Tooltip": "A legislação em vigor",
