@@ -9,9 +9,7 @@
 --- Profile: https://steamcommunity.com/profiles/76561198108707962/
 ---
 --- This mod has no dependencies
-
-if isServer() then return end
-
+---
 require "OptionScreens/ServerSettingsScreen"
 local utils = require('OptionScreens/ModSelector/Refr_utils')
 
