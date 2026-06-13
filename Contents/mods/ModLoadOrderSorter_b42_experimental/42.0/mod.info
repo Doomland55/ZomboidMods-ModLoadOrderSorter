@@ -1,8 +1,8 @@
-name=Mod Load Order Sorter [b42]
+name=Mod Load Order Sorter [b42] - Experimental
 description=Данный мод изменяет логику автоматической сортировки модов, добавленной в 42 билд ProjectZomboid. Теперь автоматическая сортировка поддерживает правила сортировки, а так же подсвечивает все найденные нарушения порядка загрузки модов.
-id=ModLoadOrderSorter_b42
+id=ModLoadOrderSorter_b42_experimental
 poster=poster_square.png
 icon=icon.png
 tags=Interface
 author=REfRigERatoR
-incompatible=ModLoadOrderSorter_b42_experimental
+incompatible=ModLoadOrderSorter_b42
