@@ -221,17 +221,27 @@ end
 --    Apply ServerSettingsScreen Overrides
 --================================================
 
-local function applyOverrides()
-    local pageEdit = ServerSettingsScreen.instance.pageEdit
-    overrideOnButtonCancel(pageEdit)
-    overrideOnButtonSave(pageEdit)
-    pageEdit.onPanelChange = function(self, ...) newPageEditOnPanelChange(self) end
 
-    local chooseModsWindow = pageEdit.chooseModsWindow
-    addPageEditFromClientButton(chooseModsWindow)
-    chooseModsWindow.buttonAccept:setOnClick(newChooseModsWindowOnNextButton, chooseModsWindow)
+local function applyOverrides()
+    if ServerSettingsScreen == nil or ServerSettingsScreen.instance == nil then
+        return
+    end
+    local pageEdit = ServerSettingsScreen.instance.pageEdit
+    if pageEdit ~= nil then
+        overrideOnButtonCancel(pageEdit)
+        overrideOnButtonSave(pageEdit)
+        pageEdit.onPanelChange = function(self, ...) newPageEditOnPanelChange(self) end
+    
+
+        local chooseModsWindow = pageEdit.chooseModsWindow
+        addPageEditFromClientButton(chooseModsWindow)
+        chooseModsWindow.buttonAccept:setOnClick(newChooseModsWindowOnNextButton, chooseModsWindow)
+    end
     fixLayout()
 end
 
+Events.OnResolutionChange.Remove(fixLayout)
 Events.OnResolutionChange.Add(fixLayout)
+
+Events.OnMainMenuEnter.Remove(applyOverrides)
 Events.OnMainMenuEnter.Add(applyOverrides)
