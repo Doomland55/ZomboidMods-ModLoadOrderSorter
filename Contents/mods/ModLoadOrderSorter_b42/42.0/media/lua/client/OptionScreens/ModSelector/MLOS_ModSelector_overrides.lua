@@ -125,7 +125,7 @@ function ModLoadOrderPanelOverride:createChildren()
     self.saveToFile:setFont(UIFont.Small);
     self.saveToFile:ignoreWidthChange();
     self.saveToFile:ignoreHeightChange();
-    self.saveToFile:setTooltip(string.format(getText("UI_MLOS_SaveToFile_Tooltip"), modsInfoFileName));
+    self.saveToFile:setTooltip(getText("UI_MLOS_SaveToFile_Tooltip", modsInfoFileName));
     self:addChild(self.saveToFile);
 
     self.sortingRules = SortingRulesPanel:new(self:getRight(), 0, self.width * 0.3, 180, self.modList)
