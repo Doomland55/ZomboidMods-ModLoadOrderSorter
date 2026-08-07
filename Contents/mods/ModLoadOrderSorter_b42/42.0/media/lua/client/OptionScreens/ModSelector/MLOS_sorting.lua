@@ -13,7 +13,7 @@
 local utils = require('OptionScreens/ModSelector/Refr_utils')
 
 local RULES_FILE = "sorting_rules.txt"
-local MOD_VERSION = "1.1.1"  -- b42.15.1 @Zed suggestions
+local MOD_VERSION = "1.1.2"  -- b42.20.1 translation files fixes
  
 local preorder = { ModManager = 1, ModManagerServer = 2, modoptions = 3 }
 local rawCategoryOrder = { "coreRequirement", "tweaks", "resource", "map", "vehicle", "code", "clothes", "ui", "other",	"translation", "undefined" }
