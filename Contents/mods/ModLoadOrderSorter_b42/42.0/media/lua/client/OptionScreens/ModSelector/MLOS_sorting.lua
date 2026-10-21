@@ -13,7 +13,7 @@
 local utils = require('OptionScreens/ModSelector/Refr_utils')
 
 local RULES_FILE = "sorting_rules.txt"
-local MOD_VERSION = "1.1.2"  -- b42.20.1 translation files fixes
+local MOD_VERSION = "1.1.3"  -- b42.21.0 bugfix (bug found by EduardoST)
  
 local preorder = { ModManager = 1, ModManagerServer = 2, modoptions = 3 }
 local rawCategoryOrder = { "coreRequirement", "tweaks", "resource", "map", "vehicle", "code", "clothes", "ui", "other",	"translation", "undefined" }
@@ -179,13 +179,13 @@ local function readModInfoFile(modId)
 		elseif key == "tags" then
 			result.tags = utils:splitStringBySeparator(value)
 		elseif key == "require" then
-			result.requirements = utils:splitStringBySeparator(value)
+			result.requirements = utils:addSlashToBeginnig(utils:splitStringBySeparator(value))
 		elseif key == "loadafter" then
-			result.loadAfter = utils:splitStringBySeparator(value)
+			result.loadAfter = utils:addSlashToBeginnig(utils:splitStringBySeparator(value))
 		elseif key == "loadbefore" then
-			result.loadBefore = utils:splitStringBySeparator(value)
+			result.loadBefore = utils:addSlashToBeginnig(utils:splitStringBySeparator(value))
 		elseif key == "incompatiblemods" then
-			result.incompatibleMods = utils:splitStringBySeparator(value)
+			result.incompatibleMods = utils:addSlashToBeginnig(utils:splitStringBySeparator(value))
 		elseif key == "loadfirst" then
 			result.loadFirst = convertToLoadCategoryString(value)
 		elseif key == "loadlast" then
@@ -217,7 +217,7 @@ local function getExtraModInfo(modInfoObj, modObject)
 		object = modObject
 	}
 
-	extraModInfo = utils:MergeTablesDedup(extraModInfo, readModInfoFile())
+	extraModInfo = utils:MergeTablesDedup(extraModInfo, readModInfoFile(extraModInfo.id))
 
 	if categoryOrder[extraModInfo.category] == nil then
 		extraModInfo.category = "undefined"
