@@ -1,0 +1,558 @@
+require "ISUI/ISPanelJoypad"
+require "ISUI/ISScrollingListBox"
+require "ISUI/ISButton"
+require "ISUI/ISLabel"
+require "ISUI/ISComboBox"
+
+local PADDING = 10
+local FONT_HGT_SMALL = getTextManager():getFontHeight(UIFont.Small)
+local FONT_HGT_MED = getTextManager():getFontHeight(UIFont.Medium)
+local FONT_HGT_LRG = getTextManager():getFontHeight(UIFont.Large)
+local BUTTON_HGT = FONT_HGT_SMALL + 6
+
+
+local utils = require('OptionScreens/ModSelector/Refr_utils')
+local MLOS_ScrollPanel = ISPanelJoypad:derive("MLOS_ScrollPanel")
+
+function MLOS_ScrollPanel:new(x, y, width, height, label, is_searchable, is_multiselectable, is_items_movable, add_move_buttons)
+    local o = ISPanelJoypad:new(x, y, width, height)
+    setmetatable(o, self)
+    self.__index = self
+
+    o.backgroundColor = {r=0, g=0, b=0, a=0.3}
+    o.borderColor = {r=1, g=1, b=1, a=0.2}
+
+    o.boxSize = 22
+
+    o.dragTexture = getTexture("media/ui/dragModIcon.png")
+    o.dragItems = nil
+
+    o._label = label
+    o._is_searchable = is_searchable
+    o._is_multiselectable = is_multiselectable
+    o._is_items_movable = is_items_movable
+    o._add_move_buttons = add_move_buttons
+
+    o.groups = nil
+
+    return o
+end
+
+function MLOS_ScrollPanel:createChildren()
+    local scroll_width = self:getWidth() - PADDING
+    local left_x = self:getX() + PADDING / 2
+    local up_y = self:getY()
+
+    if self._label then
+        up_y = up_y - FONT_HGT_LRG - PADDING
+    end
+
+    if self._add_move_buttons then
+        scroll_width = scroll_width - BUTTON_HGT * 2 - PADDING
+
+        local buttonsData = {
+            {title = "↑↑↑", internal="UP_TO_BEGINNING", tooltip="Move selected to beginning"},
+            {title = "⇈", internal="UP_10", tooltip="Move selected up by 10"},
+            {title = "↑", internal="UP_1", tooltip="Move selected up by 1"},
+            {title = "↓", internal="DOWN_1", tooltip="Move selected down by 1"},
+            {title = "⇊", internal="DOWN_10", tooltip="Move selected down by 1"},
+            {title = "↓↓↓", internal="DOWN_TO_END", tooltip="Move selected to end"},
+            start_x = left_x + scroll_width + PADDING, start_y = 0
+        }
+
+        for _, btn in ipairs(buttonsData) do
+            local button = ISButton:new(buttonsData.start_x, buttonsData.start_y, BUTTON_HGT * 2, BUTTON_HGT, btn.title, self, self.onSearchButton);
+            button.internal = btn.internal;
+            button:initialise();
+            button:instantiate();
+            button:setAnchorLeft(true);
+            button:setAnchorRight(false);
+            button:setAnchorTop(false);
+            button:setAnchorBottom(true);
+            button:setTooltip(btn.tooltip)
+            button.borderColor = {r=1, g=1, b=1, a=0.2};
+            button:setFont(UIFont.Small);
+            button:ignoreWidthChange();
+            button:ignoreHeightChange();
+            self:addChild(button);
+
+            buttonsData.start_y = buttonsData.start_y - BUTTON_HGT - PADDING
+        end
+    end
+
+    if self._is_searchable then
+        up_y = up_y - PADDING - BUTTON_HGT
+
+        local searchEntry = ISTextEntryBox:new("", left_x, up_y, scroll_width - 2 * (BUTTON_HGT + PADDING), BUTTON_HGT)
+        searchEntry.font = UIFont.Small
+        searchEntry.onTextChange = function() self:onChangeText() end
+        searchEntry:initialise()
+        searchEntry:instantiate()
+        self:addChild(searchEntry)
+
+        local searchBtnPrev = ISButton:new(searchEntry:getRight() + PADDING, searchEntry:getY(), BUTTON_HGT, BUTTON_HGT, "/\\", self, self.onSearchButton);
+        searchBtnPrev.internal = "PREV_SEARCH";
+        searchBtnPrev:initialise()
+        searchBtnPrev:instantiate()
+        searchBtnPrev:setAnchorLeft(true);
+        searchBtnPrev:setAnchorRight(false);
+        searchBtnPrev:setAnchorTop(false);
+        searchBtnPrev:setAnchorBottom(true);
+        searchBtnPrev.borderColor = {r=1, g=1, b=1, a=0.2};
+        searchBtnPrev:setFont(UIFont.Small);
+        searchBtnPrev:ignoreWidthChange();
+        searchBtnPrev:ignoreHeightChange();
+        self:addChild(searchBtnPrev);
+
+        local searchBtnNext = ISButton:new(searchBtnPrev:getRight() + 8, searchEntry:getY(), BUTTON_HGT, BUTTON_HGT, "\\/", self, self.onSearchButton);
+        searchBtnNext.internal = "NEXT_SEARCH";
+        searchBtnNext:initialise()
+        searchBtnNext:instantiate()
+        searchBtnNext:setAnchorLeft(true);
+        searchBtnNext:setAnchorRight(false);
+        searchBtnNext:setAnchorTop(false);
+        searchBtnNext:setAnchorBottom(true);
+        searchBtnNext.borderColor = {r=1, g=1, b=1, a=0.2};
+        searchBtnNext:setFont(UIFont.Small);
+        searchBtnNext:ignoreWidthChange();
+        searchBtnNext:ignoreHeightChange();
+        self:addChild(searchBtnNext);
+    end
+
+    self.scroll_list = ISScrollingListBox:new(left_x, self:getY() - PADDING / 2, scroll_width, self:getHeight() - PADDING)
+    self.scroll_list:initialise()
+    self.scroll_list:instantiate()
+    self.scroll_list.doDrawItem = function(y, item, alt) return self:doDrawItem(self.scroll_list, y, item, alt) end
+    self.scroll_list.onMouseDown = function(x, y) return self:onMouseDown(self.scroll_list, x, y) end
+    self:addChild(self.scroll_list)
+
+end
+
+-- ============================================================
+-- Interaction
+-- ============================================================
+
+function MLOS_ScrollPanel:clear()
+    self.scroll_list:clear()
+end
+
+function MLOS_ScrollPanel:addItem(name, data)
+    self.scroll_list:addItem(name, data)
+end
+
+function MLOS_ScrollPanel:updateModsColor()
+    return
+end
+
+function MLOS_ScrollPanel:onItemClick(x, y, obj)
+end
+
+function MLOS_ScrollPanel:onItemDrag(x, y, obj)
+end
+
+function MLOS_ScrollPanel:onItemDrop(x, y, obj)
+end
+
+function MLOS_ScrollPanel:onItemMove(x, y, obj)
+end
+
+function MLOS_ScrollPanel:onMouseDown(obj, x, y)
+    ISScrollingListBox.onMouseDown(obj, x, y)
+end
+
+-- ============================================================
+-- Rendering / List drawing
+-- ============================================================
+
+function MLOS_ScrollPanel:prerender()
+    ISPanelJoypad.prerender(self)
+    self:drawTextCentre(self._label, self.width / 2, 10, 1, 1, 1, 1, UIFont.Large)
+end
+
+local function drawGroup(obj, y, item, alt, h, textColor)
+
+    obj:drawRectBorder(0, y, obj:getWidth(), h, 0.5, obj.borderColor.r, obj.borderColor.g, obj.borderColor.b);
+	local itemPadY = obj.itemPadY or (h - obj.fontHgt) / 2
+	obj:drawText(item.text, 15, y + itemPadY, textColor.r, textColor.g, textColor.b, textColor.a, obj.font);
+
+    return y + h
+end
+
+local function drawItem(obj, y, item, alt, h, textColor)
+
+    local group_offset = 0
+    if item.group_id and item.group_id ~= 0 then
+        group_offset = BUTTON_HGT
+    end
+
+    obj:drawRectBorder(group_offset, y, obj:getWidth() - group_offset, h, 0.5, obj.borderColor.r, obj.borderColor.g, obj.borderColor.b);
+	local itemPadY = obj.itemPadY or (h - obj.fontHgt) / 2
+	obj:drawText(item.text, 15 + group_offset, y + itemPadY, textColor.r, textColor.g, textColor.b, textColor.a, obj.font);
+
+    return y + h
+end
+
+function MLOS_ScrollPanel:doDrawItem(obj, y, item, alt)
+    -- add indexes to `obj.selected` table to use multiselection
+    -- change item.textColor and item.selectedTextColor to change item textColor
+    -- change group_id to place item in group
+
+    if not item.height then item.height = obj.itemheight or self.boxSize end
+
+    local h = item.height
+    local yscroll = obj:getYScroll()
+    if h <= 0 or (y + yscroll + h < 0) or (y + yscroll >= h) then
+        return y + h
+    end
+
+    local textColor = item.textColor or obj.textColor
+	if obj.selected == item.index or utils:contains(obj.selected, item.index) then
+		obj:drawSelection(0, y, obj:getWidth(), h-1);
+		textColor = item.selectedTextColor or obj.selectedTextColor
+	elseif (obj.mouseoverselected == item.index) and obj:isMouseOver() and not obj:isMouseOverScrollBar() then
+		obj:drawMouseOverHighlight(0, y, obj:getWidth(), h-1);
+	end
+
+    -- check item is group
+    if item.is_group then
+        return drawGroup(obj, y, item, alt, h, textColor)
+    end
+
+    -- check is item in group and group is visible
+    if item.group_id and item.group_id ~= 0 and self.group[item.group_id] then 
+        return drawItem(obj, y, item, alt, h, textColor)
+    end
+
+	return y + h;
+end
+
+
+--================================================
+--           Search Items methods
+--================================================
+
+
+function MLOS_ScrollPanel:onChangeText()
+    if not utils:tableIsEmpty(self.foundItems) then
+        self.foundItems = {}
+        self.foundIndex = 0
+    end
+end
+
+
+function MLOS_ScrollPanel:searchItems()
+    if not utils:tableIsEmpty(self.foundItems) then return end
+
+    local searchWord = string.lower(self.searchEntry:getInternalText())
+    if not searchWord or searchWord == "" then return end
+
+    for i, item in ipairs(self.modList.items) do
+        if string.find(string.lower(item.item.name), searchWord) or string.find(string.lower(item.item.modId), searchWord) then
+            table.insert(self.foundItems, i)
+        end
+    end
+end
+
+
+function MLOS_ScrollPanel:onSearchButton(button)
+    self:searchItems()
+    if utils:tableIsEmpty(self.foundItems) then return end
+
+    if button.internal == "NEXT_SEARCH" then self.foundIndex = self.foundIndex + 1 end
+    if button.internal == "PREV_SEARCH" then self.foundIndex = self.foundIndex - 1 end
+
+    if self.foundIndex > #self.foundItems then self.foundIndex = 1 end
+    if self.foundIndex < 1 then self.foundIndex = #self.foundItems end
+
+    local itemIndex = self.foundItems[self.foundIndex]
+    if itemIndex ~= nil then
+        self.modList:ensureVisible(itemIndex)
+        self.foundCounter = 400
+    end
+end
+
+
+
+
+
+
+
+
+-- function ModOrderListBox:onMouseDown(x, y)
+--     if #self.items == 0 then return end
+--     local row = self:rowAt(x, y)
+--     local doSound = true
+--     if row > #self.items then
+--         row = #self.items
+--         doSound = false
+--     end
+--     if row < 1 then
+--         row = 1
+--         doSound = false
+--     end
+--     if doSound then
+--         getSoundManager():playUISound("UISelectListItem")
+--     end
+--     if self.mouseOverDragIcon then
+--         self.dragItem = self.items[row]
+--     end
+-- end
+
+-- function ModOrderListBox:updateModsColor()
+--     local idToIndex = {}
+--     for i, val in ipairs(self.items) do
+--         idToIndex[val.item.modId] = i
+--     end
+
+--     local isCorrectOrder, incorrectModId = self.parent:isCorrectOrder()
+--     self.parent.acceptButton.enable = isCorrectOrder
+
+--     for i, val in ipairs(self.items) do
+--         local isGoodPos = true
+--         local beforeList = val.item.modInfo:getLoadBefore()
+--         if beforeList ~= nil then
+--             for j = 0, beforeList:size()-1 do
+--                 if idToIndex[beforeList:get(j)] ~= nil and idToIndex[beforeList:get(j)] < i then
+--                     isGoodPos = false
+--                     break
+--                 end
+--             end
+--         end
+--         if isGoodPos then
+--             local afterList = val.item.modInfo:getLoadAfter()
+--             if afterList ~= nil then
+--                 for j = 0, afterList:size()-1 do
+--                     if idToIndex[afterList:get(j)] ~= nil and idToIndex[afterList:get(j)] > i then
+--                         isGoodPos = false
+--                         break
+--                     end
+--                 end
+--             end
+--         end
+
+--         if isGoodPos then
+--             val.color = {r = 0.10, g = 0.62, b = 0.08}
+--         else
+--             val.color = {r = 0.98, g = 0.66, b = 0.06}
+--         end
+
+--         if incorrectModId == val.item.modId then
+--             val.color = {r = 1, g = 0, b = 0}
+--         end
+--     end
+-- end
+
+-- function ModOrderListBox:onMouseUp(x, y)
+--     ISScrollingListBox.onMouseUp(self, x, y)
+--     if self.dragItem ~= nil then
+--         local row = self:rowAt(x, y)
+--         if row <= #self.items and row >= 1 then
+--             local temp = {}
+--             for i,v in ipairs(self.items) do
+--                 if i == row then
+--                     table.insert(temp, self.dragItem)
+--                 end
+--                 if v ~= self.dragItem then
+--                     table.insert(temp, v)
+--                 end
+--             end
+--             self.items = temp
+--         end
+--         local tx = (#self.items)*self.dragItem.height
+--         if row == -1 and y > tx and y < tx + 100 then
+--             local temp = {}
+--             for i,v in ipairs(self.items) do
+--                 if v ~= self.dragItem then
+--                     table.insert(temp, v)
+--                 end
+--             end
+--             table.insert(temp, self.dragItem)
+--             self.items = temp
+--         end
+--         self:updateModsColor()
+--     end
+--     self.dragItem = nil
+-- end
+
+-- function ModOrderListBox:onMouseUpOutside(x, y)
+--     ISScrollingListBox.onMouseUpOutside(self, x, y)
+--     self.dragItem = nil
+-- end
+
+-- function ModOrderListBox:prerender()
+--     self.mouseOverDragIcon = nil
+--     ISScrollingListBox.prerender(self)
+-- end
+
+-- function ModOrderListBox.tooltipRender(self)
+--     self:setX(self.xRender)
+--     self:setY(self.yRender)
+
+--     if self.contextMenu and self.contextMenu.joyfocus then
+--         local playerNum = self.contextMenu.player
+--         self:setX(getPlayerScreenLeft(playerNum) + 60);
+--         self:setY(getPlayerScreenTop(playerNum) + 60);
+--     elseif self.contextMenu and self.contextMenu.currentOptionRect then
+--         if self.contextMenu.currentOptionRect.height > 32 then
+--             self:setY(my + self.contextMenu.currentOptionRect.height)
+--         end
+--         self:adjustPositionToAvoidOverlap(self.contextMenu.currentOptionRect)
+--     elseif self.owner and self.owner.isButton then
+--         local ownerRect = { x = self.owner:getAbsoluteX(), y = self.owner:getAbsoluteY(), width = self.owner.width, height = self.owner.height }
+--         self:adjustPositionToAvoidOverlap(ownerRect)
+--     end
+
+--     -- big rectangle (our background)
+--     self:drawRect(0, 0, self.width, self.height, 0.7, 0.05, 0.05, 0.05)
+--     self:drawRectBorder(0, 0, self.width, self.height, 0.5, 0.9, 0.9, 1)
+
+--     -- render texture
+--     if self.texture then
+--         local widthTexture = self.texture:getWidth()
+--         local heightTexture = self.texture:getHeight()
+--         local textureY = self.name and 35 or 5
+--         self:drawTextureScaled(self.texture, 8, textureY, widthTexture, heightTexture, 1, 1, 1, 1)
+--     end
+
+--     -- render name
+--     if self.name then
+--         self:drawText(self.name, 8, 5, 1, 1, 1, 1, UIFont.Medium)
+--     end
+
+--     self:renderContents()
+
+--     -- render a how to rotate message at the bottom if needed
+--     if self.footNote then
+--         local fontHgt = getTextManager():getFontFromEnum(UIFont.Small):getLineHeight()
+--         self:drawTextCentre(self.footNote, self:getWidth() / 2, self:getHeight() - fontHgt - 4, 1, 1, 1, 1, UIFont.Small)
+--     end
+-- end
+
+-- function ModOrderListBox:updateTooltip()
+--     if self.parent.joyfocus then
+--         if self.items[self.selected] and self.items[self.selected].tooltip then
+--             local text = self.items[self.selected].tooltip
+--             if not self.tooltipUI then
+--                 self.tooltipUI = ISToolTip:new()
+--                 self.tooltipUI:setOwner(self)
+--                 self.tooltipUI:setVisible(false)
+--                 self.tooltipUI:setAlwaysOnTop(true)
+--                 self.tooltipUI.render = self.tooltipRender
+--                 self.tooltipUI.maxLineWidth = 1000 -- don't wrap the lines
+--             end
+--             if not self.tooltipUI:getIsVisible() then
+--                 self.tooltipUI:addToUIManager()
+--                 self.tooltipUI:setVisible(true)
+--             end
+--             self.tooltipUI.description = text
+
+--             self.tooltipUI.xRender = self.x + self.parent.x + 23 + 400
+--             local y0 = 0
+--             for i,v in ipairs(self.items) do
+--                 if i == self.selected then
+--                     self.tooltipUI.yRender = self.y + y0 + v.height/2 + 23 + 80
+--                 end
+--                 y0 = y0 + v.height
+--             end
+--         else
+--             if self.tooltipUI and self.tooltipUI:getIsVisible() then
+--                 self.tooltipUI:setVisible(false)
+--                 self.tooltipUI:removeFromUIManager()
+--             end
+--         end
+--     else
+--         ISScrollingListBox.updateTooltip(self)
+--     end
+-- end
+
+-- function ModOrderListBox:render()
+--     ISScrollingListBox.render(self)
+--     local item = self.dragItem
+--     local x = self:getMouseX()
+--     local y = self:getMouseY()
+
+--     if item ~= nil then
+--         local y0 = 0
+--         for _, v in ipairs(self.items) do
+--             if not v.height then v.height = self.itemheight end
+--             if y >= y0 and y < y0 + v.height/2 and v ~= item then
+--                 self:drawRect(0, y0 - v.height/8, self:getWidth(), v.height/4, 0.5, 1, 1, 1)
+--                 break
+--             end
+--             y0 = y0 + v.height
+--         end
+--         if y >= y0 and y < y0 + item.height/2 then
+--             self:drawRect(0, y0 - item.height/8, self:getWidth(), item.height/4, 0.5, 1, 1, 1)
+--         end
+
+--         y = y - item.height/2
+
+--         self:drawRect(0, (y), self:getWidth(), item.height-1, 0.3, 0.7, 0.35, 0.15)
+--         self:drawRectBorder(0, (y), self:getWidth(), item.height, 0.5, self.borderColor.r, self.borderColor.g, self.borderColor.b)
+
+--         local shift = (item.height - self.boxSize)/2
+--         self:drawTexture(self.dragTexture, shift, shift + y, 1, 1, 1, 1)
+
+--         if item.item.icon ~= "" then
+--             self:drawTextureScaled(getTexture(item.item.icon), item.height + 8, y + (item.height - 28) / 2, 28, 28, 1, 1, 1, 1)
+--         else
+--             self:drawTextureScaled(Texture.getWhite(), item.height + 8, y + (item.height - 28) / 2, 28, 28, 0.1, 1, 1, 1)
+--         end
+
+--         local itemPadY = self.itemPadY or (item.height - self.fontHgt) / 2
+--         self:drawText(item.item.name, item.height + 50, (y)+itemPadY, 0.9, 0.9, 0.9, 0.9, self.font)
+--     end
+-- end
+
+-- function ModOrderListBox:doDrawItem(y, item, alt)
+--     local isMouseOver = self.mouseoverselected == item.index
+
+--     if self.parent.joyfocus ~= nil and self.selected == item.index then
+--         self:drawRect(0, (y), self:getWidth(), item.height-1, 0.3, 0.7, 0.35, 0.15)
+--     end
+
+--     if self.dragItem == item then
+--         self:drawRect(0, (y), self:getWidth(), item.height-1, 0.3, 0.7, 0.35, 0.15)
+--     end
+--     self:drawRectBorder(0, (y), self:getWidth(), item.height, 0.5, self.borderColor.r, self.borderColor.g, self.borderColor.b)
+
+--     local shift = (item.height - self.boxSize)/2
+--     self:drawTexture(self.dragTexture, shift, shift + y, 1, 1, 1, 1)
+--     if isMouseOver and ((self:getMouseX() > shift) and (self:getMouseX() < self.boxSize + shift) and (self:getMouseY() > shift + y) and (self:getMouseY() < shift + y + self.boxSize)) then
+--         self.mouseOverDragIcon = item
+--     end
+
+--     if item.item.icon ~= "" then
+--         self:drawTextureScaled(getTexture(item.item.icon), item.height + 8, y + (item.height - 28) / 2, 28, 28, 1, 1, 1, 1)
+--     else
+--         self:drawTextureScaled(Texture.getWhite(), item.height + 8, y + (item.height - 28) / 2, 28, 28, 0.1, 1, 1, 1)
+--     end
+
+--     local itemPadY = self.itemPadY or (item.height - self.fontHgt) / 2
+--     self:drawText(item.item.name, item.height + 50, (y)+itemPadY, item.color.r, item.color.g, item.color.b, 0.9, self.font)
+
+--     y = y + item.height
+--     return y
+-- end
+
+-- function ModOrderListBox:moveItemUp()
+--     if self.selected <= 1 then return end
+
+--     local temp = self.items[self.selected]
+--     self.items[self.selected] = self.items[self.selected-1]
+--     self.items[self.selected-1] = temp
+--     self.selected = self.selected-1
+--     self:updateModsColor()
+-- end
+
+-- function ModOrderListBox:moveItemDown()
+--     if self.selected == #self.items or self.selected == -1 then return end
+
+--     local temp = self.items[self.selected]
+--     self.items[self.selected] = self.items[self.selected+1]
+--     self.items[self.selected+1] = temp
+--     self.selected = self.selected+1
+--     self:updateModsColor()
+-- end
+
+return MLOS_ScrollPanel
