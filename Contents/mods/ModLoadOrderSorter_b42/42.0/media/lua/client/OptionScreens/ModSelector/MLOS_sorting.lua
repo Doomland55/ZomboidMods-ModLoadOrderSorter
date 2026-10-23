@@ -379,7 +379,6 @@ function ModSorter:SortModsOrder(modsList)
 	print("Mods sorting STARTED!")
     local currentOrder = self:initModsInfoCache(modsList)
 	table.sort(currentOrder, initialSortMods)
-	utils:tprint(self.modsInfoCache)
 	return topological_sort(currentOrder, self.modsInfoCache)
 end
 
