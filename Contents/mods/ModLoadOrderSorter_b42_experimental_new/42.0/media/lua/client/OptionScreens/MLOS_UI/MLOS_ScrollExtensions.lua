@@ -364,8 +364,9 @@ end
 
 ---@param items any - array of items
 ---@param indices table - selected indexes to move
----@param toIndex number index to move TO
-local function moveElements(items, indices, toIndex)
+---@param toIndex number - index to move TO
+---@param stickToItem boolean - If false, the target index will not be modified (meaning the moved items will be placed at the specified toIndex). If true, the index will be adjusted by the number of moved items when moving downward (meaning the placement is anchored to a specific item rather than an index).
+local function moveElements(items, indices, toIndex, stickToItem)
     local itemsN = #items
     local indicesN = #indices
     toIndex = utils:clamp(toIndex, 1, itemsN + 1)
@@ -384,7 +385,7 @@ local function moveElements(items, indices, toIndex)
 
         indexesMap[oldId * -1] = true -- inverted index - to remove
     end
-
+    if stickToItem then toIndex = utils:clamp(toIndex - countLessThanToIndex, 1, itemsN + 1) end
     if toIndex + countLessThanToIndex > itemsN then toIndex = (itemsN + 1) - indicesN end
     imax = utils:clamp(imax + countLessThanToIndex, 1, itemsN)
 
@@ -652,6 +653,7 @@ local function modListBox_drawOnlyModCard(self, y, item, alt)
     local itemPadY = self.itemPadY or (item.height - self.fontHgt) / 2
     self:drawText(item.item.name, item.height + 50, (y)+itemPadY, item.color.r, item.color.g, item.color.b, 0.9, self.font)
 
+    if item.y0 ~= y then item.y0 = y end
     y = y + item.height
     return y
 end
@@ -673,7 +675,13 @@ local function modListBox_onMouseUp(self, x, y)
         if row < 0 and y > 0 then row = #self.items + 1 end
 
         if row ~= self.dragItem.itemindex then
-            local result = moveElements(self.items, selectedIndexes, row)
+            local isHalf = false
+            local selectedItem = self.items[row]
+            if selectedItem ~= nil and selectedItem.y0 and y < selectedItem.y0 + selectedItem.height * 0.5 then
+                isHalf = true
+            end
+
+            local result = moveElements(self.items, selectedIndexes, row, isHalf)
             self.items = result.items  -- flat table
             self.selected = result.movedIndexesFlat[1] -- int
 
