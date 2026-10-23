@@ -217,7 +217,10 @@ local function getExtraModInfo(modInfoObj, modObject)
 		object = modObject
 	}
 
-	extraModInfo = utils:MergeTablesDedup(extraModInfo, readModInfoFile(extraModInfo.id))
+	local modinfoFileData = readModInfoFile(extraModInfo.id)
+	modinfoFileData.id = nil
+	modinfoFileData.name = nil
+	extraModInfo = utils:MergeTablesDedup(extraModInfo, modinfoFileData)
 
 	if categoryOrder[extraModInfo.category] == nil then
 		extraModInfo.category = "undefined"
