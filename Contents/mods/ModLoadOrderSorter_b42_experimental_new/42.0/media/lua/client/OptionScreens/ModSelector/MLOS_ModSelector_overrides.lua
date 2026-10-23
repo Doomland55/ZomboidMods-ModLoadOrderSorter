@@ -90,12 +90,22 @@ function ModLoadOrderPanelOverride:fixBackButtonJoypadFocus()
     self.backButton:setOnClick(fixedBackFunc)
 end
 
+-- #region ============== Autoscroll ==============
+-- Scroll list box up or down if mouse is outside 
+-- ================================================
+function ModLoadOrderPanelOverride:render()
+    ISPanelJoypad.render(self)
+    if self.modList.dragItem == nil then return end
 
--- function ModLoadOrderPanelOverride:render()
---     ISPanelJoypad.render(self)
---     local playerNum = 0
---     self:renderJoypadNavigateOverlay(playerNum)
--- end
+    local mY = self:getMouseY()
+    local diff = 0
+    if mY < self.modList:getY() then diff = mY - self.modList:getY() end
+    if mY > self.modList:getBottom() then diff = mY - self.modList:getBottom() end
+    if diff == 0 then return end
+
+    self.modList:setYScroll(self.modList:getYScroll() - (diff * 0.02 * UIManager.getMillisSinceLastRender()))
+end
+-- #endregion
 
 
 function ModLoadOrderPanelOverride:createChildren()
@@ -115,18 +125,13 @@ function ModLoadOrderPanelOverride:createChildren()
     self:setY((scrHeight - height) * 0.5)
     self:setHeight(height)
 
-    -- self.modList:setY(50)
-    -- self.modList:setHeight(height - (50 + PADDING + BUTTON_HGT + PADDING))
-    -- self.modList:setWidth(width * 0.5 - PADDING * 2  )
-
     -- ADD NEW FUNCTIONS --
     scrollExt:initialResacale(self.modList, nil, 50, width * 0.5 - PADDING * 2, height - (50 + PADDING + BUTTON_HGT + PADDING))
-    -- scrollExt:doDrawItemOnlyModCard(self.modList)
-    -- scrollExt:addTitle(self.modList, "", true, {r=0.28, g=0.35, b=0.8, a=0.8})
+    scrollExt:modListBoxOverrides(self.modList)
+    scrollExt:addTitle(self.modList, "", true, {r=0.28, g=0.35, b=0.8, a=0.8})
     scrollExt:addBackground(self.modList, nil, {})
-    -- scrollExt:addSearchEntry(self.modList, -2)
-    -- scrollExt:addMoveButtons(self.modList)
-
+    scrollExt:addSearchEntry(self.modList, - (PADDING * 1.4 + BUTTON_HGT))
+    scrollExt:addMoveButtons(self.modList)
     -- scrollExt:addMultiselectionSupport(self.modList)
 end
 

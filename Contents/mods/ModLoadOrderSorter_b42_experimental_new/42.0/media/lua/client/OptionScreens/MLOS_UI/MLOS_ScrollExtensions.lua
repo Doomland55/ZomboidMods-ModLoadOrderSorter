@@ -28,11 +28,7 @@ local function getRectValues(scrollObject)
             x = scrollObject.x,
             y = scrollObject.y,
             width = scrollObject.width,
-            height = scrollObject.height,
-            initial_x = scrollObject.x,
-            initial_y = scrollObject.y,
-            initial_width = scrollObject.width,
-            initial_height = scrollObject.height
+            height = scrollObject.height
         }
     end
     return scrollObject.MLOS_scrollRect
@@ -54,6 +50,21 @@ local function setRectValues(scrollObject, x, y, width, height, isOffset)
         height = height or scrollRect.height
     end
 
+    if scrollObject.vscroll then
+        scrollObject.vscroll:setHeight(height - (scrollObject.hscroll and 17 or 0))
+        scrollObject.vscroll.minimumHeight = scrollObject.vscroll.height
+        if width ~= scrollRect.width then
+            scrollObject.vscroll:setX(width - 17)
+        end
+    end
+    if scrollObject.hscroll then
+        scrollObject.hscroll:setWidth(width - (scrollObject.vscroll and 17 or 0))
+        scrollObject.hscroll.minimumWidth = scrollObject.hscroll.width
+        if height ~= scrollRect.height then
+            scrollObject.hscroll:setY(height - 17)
+        end
+    end
+
     scrollRect.x = x
     scrollRect.y = y
     scrollRect.height = height
@@ -63,18 +74,6 @@ local function setRectValues(scrollObject, x, y, width, height, isOffset)
     scrollObject:setY(y)
     scrollObject:setHeight(height)
     scrollObject:setWidth(width)
-
-    if scrollObject.vscroll then
-        -- scrollObject.vscroll:setHeight(height - (scrollObject.hscroll and 17 or 0))
-        scrollObject.vscroll:setHeight(0)
-        scrollObject.vscroll.minimumHeight = height - (scrollObject.hscroll and 17 or 0)
-        scrollObject.vscroll:onResize()
-    end
-    if scrollObject.hscroll then
-        scrollObject.hscroll:setWidth(width - (scrollObject.vscroll and 17 or 0))
-        scrollObject.hscroll.minimumWidth = scrollObject.hscroll.width
-        scrollObject.hscroll:onResize()
-    end
 
     scrollObject.MLOS_scrollRect = scrollRect
 end
@@ -175,53 +174,6 @@ end
 function MLOS_ScrollExtensions:initialResacale(scrollObject, x, y, width, height)
     setRectValues(scrollObject, x, y, width, height)
 end
-
--- #region Draw only mod card
-function MLOS_ScrollExtensions:doDrawItemOnlyModCard(scrollObject)
-    local origOnMouseDown = scrollObject.onMouseDown
-    scrollObject.onMouseDown = function(slf, x, y)
-        origOnMouseDown(slf, x, y)
-        local row = slf:rowAt(x, y)
-        slf.selected = slf.selected ~= row and row or 0
-
-        if slf.selected_map == nil then return end
-        slf.selected_map[row] = not slf.selected_map[row]
-    end
-
-    scrollObject.doDrawItem = function(slf, y, item, alt)
-        local isMouseOver = slf.mouseoverselected == item.index
-        local selected_map = getSelectedItemsDict(slf)
-        
-        if selected_map[item.index] ~= nil then
-            slf:drawRect(0, (y), slf:getWidth(), item.height-1, 0.3, 0.7, 0.35, 0.15)
-        end
-        if isMouseOver then
-            slf:drawRectBorder(0, (y), slf:getWidth(), item.height, 1, slf.borderColor.r, slf.borderColor.g, slf.borderColor.b)
-        end
-
-        -- mod card (vanilla code) do not touch
-        slf:drawRectBorder(0, (y), slf:getWidth(), item.height, 0.5, slf.borderColor.r, slf.borderColor.g, slf.borderColor.b)
-
-        local shift = (item.height - slf.boxSize)/2
-        slf:drawTexture(slf.dragTexture, shift, shift + y, 1, 1, 1, 1)
-        if isMouseOver and ((slf:getMouseX() > shift) and (slf:getMouseX() < slf.boxSize + shift) and (slf:getMouseY() > shift + y) and (slf:getMouseY() < shift + y + slf.boxSize)) then
-            slf.mouseOverDragIcon = item
-        end
-
-        if item.item.icon ~= "" then
-            slf:drawTextureScaled(getTexture(item.item.icon), item.height + 8, y + (item.height - 28) / 2, 28, 28, 1, 1, 1, 1)
-        else
-            slf:drawTextureScaled(Texture.getWhite(), item.height + 8, y + (item.height - 28) / 2, 28, 28, 0.1, 1, 1, 1)
-        end
-
-        local itemPadY = slf.itemPadY or (item.height - slf.fontHgt) / 2
-        slf:drawText(item.item.name, item.height + 50, (y)+itemPadY, item.color.r, item.color.g, item.color.b, 0.9, slf.font)
-
-        y = y + item.height
-        return y
-    end
-end
--- #endregion
 
 
 -- #region ============== Background and Borders ==============
@@ -338,7 +290,6 @@ end
 -- #endregion
 
 
---- comment
 --- @param scrollObject any
 --- @param offset any - nil - добавляем поиск inPlace , то есть добавляем поиск и сдвигаем скрол лист под поиск. Число - значит не двигаем скролл лист, но двигаем поиск по вертикали
 function MLOS_ScrollExtensions:addSearchEntry(scrollObject, offset)
@@ -352,9 +303,9 @@ function MLOS_ScrollExtensions:addSearchEntry(scrollObject, offset)
     local scrollRect = getRectValues(scrollObject)
 
     local search_y = scrollRect.y
-    if offset ~= nil then search_y = scrollRect.initial_y + offset end
+    if offset ~= nil then search_y = scrollRect.y + offset end
 
-    scrollParent.searchEntry = ISTextEntryBox:new("", scrollRect.initial_x + PADDING , search_y + PADDING, scrollRect.initial_width / 2 - 2 * (BUTTON_HGT + PADDING), BUTTON_HGT)
+    scrollParent.searchEntry = ISTextEntryBox:new("", scrollRect.x + PADDING , search_y + PADDING, scrollRect.width / 2 - 2 * (BUTTON_HGT + PADDING), BUTTON_HGT)
     if offset == nil then
         setRectValues(scrollObject, nil, PADDING + BUTTON_HGT + PADDING, nil, nil, true)
     end
@@ -451,6 +402,7 @@ local function moveElements(items, indices, toIndex)
             movedIndexes[#movedIndexes + 1] = toIndex + toSortId
             indexesMap[toIndex + toSortId] = i
             toSortId = toSortId + 1
+            indexesMap[i * -1] = nil
         end
     end
 
@@ -458,15 +410,22 @@ local function moveElements(items, indices, toIndex)
     local result = {}
     icache = 1
     for i=1, itemsN do
+        local item = nil
         if indexesMap[i] then
-            result[i] = items[indexesMap[i]]
+            item = items[indexesMap[i]]
             indexesMap[i] = true
         elseif i > imin-1 and i < imax + 1 then
-            result[i] = items[movingIndexesCache[icache]]
+            item = items[movingIndexesCache[icache]]
             icache = icache + 1
         else
-            result[i] = items[i]
+            item = items[i]
         end
+        if item.itemindex then item.itemindex = i end
+        result[i] = item
+    end
+
+    if #result ~= itemsN then
+        error("[ERROR] MLOS: Items size changed! Expected size: " .. itemsN .. ", Actual size: " .. #result)
     end
 
     return {items = result, movedIndexesMap = indexesMap, movedIndexesFlat = movedIndexes}
@@ -497,33 +456,14 @@ local function onMoveButton(self, button, scrollObject)
     local result = moveElements(scrollObject.items, selected, toIndex)
     scrollObject.items = result.items  -- flat table
     scrollObject.selected = result.movedIndexesFlat[1] -- int
+    scrollObject:ensureVisible(result.movedIndexesFlat[#result.movedIndexesFlat])
 
     if scrollObject.selected_map ~= nil then scrollObject.selected_map = result.movedIndexesMap end
 
     if scrollObject.parent and scrollObject.parent.searchEntry then
         onChangeText(scrollObject.parent, scrollObject, false)
     end
-
-    if initial_count ~= #scrollObject.items then
-        error("[ERROR] MLOS: Items size changed! Expected size: " .. initial_count .. ", Actual size: " .. #scrollObject.items)
-    end
-
 end
-
-
--- local function addMovedHighlight(scrollObject)
-
---     local originalDoDrawItems = scrollObject.doDrawItem
---     scrollObject.doDrawItem = function(self, y, item, alt)
---         if self.moved_counter > 0 and getSelectedItemsDict(self)[item.itemindex] then
---             self.moved_counter = self.moved_counter - 1
---             self:drawRect(0, (y), self:getWidth(), item.height-1, 0.2, 0.58, 1, 0.12)
---         end
-
---         return originalDoDrawItems(self, y, item, alt)
---     end
-
--- end
 
 
 -- Should be called after addSearchEntry
@@ -567,11 +507,13 @@ end
 
 -- #region ============== Multiselection support ==============
 -- New variables:
--- ScrollObject: multiselected
+-- ScrollObject: selected_map, selected_flat
 -- ScrollObject.parent: -
 -- ============================================================
 local selectionAnchor = nil
 local function selectItem(selectedMap, row, ctrlPressed, shiftPressed)
+    if selectedMap == nil or not row then return {} end
+
     if shiftPressed and selectionAnchor then
         local from = math.min(selectionAnchor, row)
         local to = math.max(selectionAnchor, row)
@@ -591,54 +533,8 @@ local function selectItem(selectedMap, row, ctrlPressed, shiftPressed)
 end
 
 
--- local function doDrawItem(self, y, item, alt)
---     local isMouseOver = self.mouseoverselected == item.index
-
---     if self.parent.joyfocus ~= nil and self.selected == item.index then
---         self:drawRect(0, (y), self:getWidth(), item.height-1, 0.3, 0.7, 0.35, 0.15)
---     end
-
--- function ModOrderListBoxOverride:doDrawItem(y, item, alt)
---     local parent = self.parent
---     if parent.foundCounter > 0 and parent.foundIndex > 0 and parent.foundItems[parent.foundIndex] == item.itemindex then
---         parent.foundCounter = parent.foundCounter - 1
---         local alpha = 0.30
---         if parent.foundCounter < 80 then alpha = alpha - (alpha * alpha) end
---         self:drawRect(0, (y), self:getWidth(), item.height-1, alpha, 0.5, 1, 1)
---     end
-
---     if utils:contains(parent.multiselected, item.itemindex) then
---         self:drawRect(0, (y), self:getWidth(), item.height-1, 0.3, 0.7, 0.35, 0.15)
---     end
-
---     if parent.multiselected_counter > 0 and utils:contains(parent.multiselected_temp, item.itemindex) then
---         parent.multiselected_counter = parent.multiselected_counter - 1
---         self:drawRect(0, (y), self:getWidth(), item.height-1, 0.2, 0.58, 1, 0.12)
---     end
-
---     -- sorting rules icon
---     local isMouseOver = self.mouseoverselected == item.index
---     local shift = (item.height - self.boxSize)/2
---     local textureX = self:getWidth() - shift - self.boxSize - 20
---     local sr = self.parent.sortingRules
---     if sr.modInfoCache == nil or (sr.modInfoCache.id == item.item.modId) then
---         self:drawTexture(rulesTexture, textureX, shift + y, 1, 1, 1, 1)
---     end
---     if isMouseOver then
---         local mX, mY = self:getMouseX(), self:getMouseY()
---         if (mX > textureX) and (mX < textureX + self.boxSize) and (mY > shift + y) and (mY < shift + y + self.boxSize) then
---             self.mouseOverRulesIcon = item
---         else
---             self.mouseOverRulesIcon = nil
---         end
---     end
-
---     return origDoDrawItem(self, y, item, alt)
--- end
-
-
 local function multiselectOnMouseDown(self, x, y)
-    local row = self:rowAt(x, y)
+    local row = self.mouseoverselected
 
     -- if self.parent.sortingRules:onClickItemInList(self.mouseOverRulesIcon, self.items[row]) then
     --     if not utils:tableIsEmpty(self.parent.multiselected) then self.parent.multiselected = {} end
@@ -670,9 +566,9 @@ local function multiselectOnMouseDown(self, x, y)
     -- end
 
     self.selected_map = selectItem(self.selected_map, row, isCtrlKeyDown(), isShiftKeyDown())
-    if not utils:tableIsEmpty(self.selected_map) then
-        self.multiselected_temp = {}
-    end
+    -- if not utils:tableIsEmpty(self.selected_map) then
+    --     self.multiselected_temp = {}
+    -- end
 end
 
 
@@ -701,13 +597,7 @@ local function multiselectOnMouseUp(self, x, y)
 end
 
 
-local function multiselectOnMouseUpOutside(self, x, y)
-    ISScrollingListBox.onMouseUpOutside(self, x, y)
-    if self.parent and self.parent:isMouseOver() then
-        self:onMouseUp(x,y)
-    end
-    self.dragItem = nil
-end
+
 
 
 function MLOS_ScrollExtensions:addMultiselectionSupport(scrollObject)
@@ -723,14 +613,100 @@ function MLOS_ScrollExtensions:addMultiselectionSupport(scrollObject)
     end
 
     -- scrollObject.onMouseUp = MultiselectOnMouseUp
-    
-    scrollObject.onMouseUpOutside = multiselectOnMouseUpOutside
-
 
 end
 
 
 -- #endregion
+
+
+
+-- #region Override render
+
+local function modListBox_drawOnlyModCard(self, y, item, alt)
+    local isMouseOver = self.mouseoverselected == item.index
+    local selected_map = getSelectedItemsDict(self)
+
+    if selected_map[item.index] ~= nil then
+        self:drawRect(0, (y), self:getWidth(), item.height-1, 0.3, 0.7, 0.35, 0.15)
+    end
+    if isMouseOver then
+        self:drawRectBorder(0, (y), self:getWidth(), item.height, 1, self.borderColor.r, self.borderColor.g, self.borderColor.b)
+    end
+
+    -- mod card (vanilla code) do not touch
+    self:drawRectBorder(0, (y), self:getWidth(), item.height, 0.5, self.borderColor.r, self.borderColor.g, self.borderColor.b)
+
+    local shift = (item.height - self.boxSize)/2
+    self:drawTexture(self.dragTexture, shift, shift + y, 1, 1, 1, 1)
+    if isMouseOver and ((self:getMouseX() > shift) and (self:getMouseX() < self.boxSize + shift) and (self:getMouseY() > shift + y) and (self:getMouseY() < shift + y + self.boxSize)) then
+        self.mouseOverDragIcon = item
+    end
+
+    if item.item.icon ~= "" then
+        self:drawTextureScaled(getTexture(item.item.icon), item.height + 8, y + (item.height - 28) / 2, 28, 28, 1, 1, 1, 1)
+    else
+        self:drawTextureScaled(Texture.getWhite(), item.height + 8, y + (item.height - 28) / 2, 28, 28, 0.1, 1, 1, 1)
+    end
+
+    local itemPadY = self.itemPadY or (item.height - self.fontHgt) / 2
+    self:drawText(item.item.name, item.height + 50, (y)+itemPadY, item.color.r, item.color.g, item.color.b, 0.9, self.font)
+
+    y = y + item.height
+    return y
+end
+
+local function modListBox_onMouseUpOutside(self, x, y)
+    ISScrollingListBox.onMouseUpOutside(self, x, y)
+    if self.parent and self.parent:isMouseOver() then
+        self:onMouseUp(x,y)
+    end
+    self.dragItem = nil
+end
+
+local function modListBox_onMouseUp(self, x, y)
+    ISScrollingListBox.onMouseUp(self, x, y)
+
+    if self.dragItem ~= nil and (x >= self:getX() and x <= self:getRight()) then
+        local row = self.mouseoverselected
+        local selectedIndexes = getSelectedItemsFlat(self)
+        if row < 0 and y > 0 then row = #self.items + 1 end
+
+        if row ~= self.dragItem.itemindex then
+            local result = moveElements(self.items, selectedIndexes, row)
+            self.items = result.items  -- flat table
+            self.selected = result.movedIndexesFlat[1] -- int
+
+            if self.selected_map then
+                self.selected_map = result.movedIndexesMap
+            end
+
+            self:updateModsColor()
+        end
+    end
+    self.dragItem = nil
+end
+
+
+function MLOS_ScrollExtensions:modListBoxOverrides(scrollObject)
+    local origOnMouseDown = scrollObject.onMouseDown
+    scrollObject.onMouseDown = function(slf, x, y)
+        origOnMouseDown(slf, x, y)
+        if (scrollObject.dragItem ~= nil and scrollObject.selected == scrollObject.mouseoverselected) or scrollObject.mouseoverselected < 1 then return end
+
+        local row = scrollObject.mouseoverselected
+        slf.selected = slf.selected ~= row and row or 0
+
+        if slf.selected_map == nil then return end
+        slf.selected_map[row] = not slf.selected_map[row]
+    end
+
+    scrollObject.onMouseUp = modListBox_onMouseUp
+    scrollObject.onMouseUpOutside = modListBox_onMouseUpOutside
+    scrollObject.doDrawItem = modListBox_drawOnlyModCard
+end
+-- #endregion
+
 
 
 -- #region Drag Drop

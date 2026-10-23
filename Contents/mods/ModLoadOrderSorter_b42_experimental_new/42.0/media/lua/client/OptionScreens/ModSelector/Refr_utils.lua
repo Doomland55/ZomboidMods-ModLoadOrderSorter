@@ -147,6 +147,17 @@ function Refr_Utils:tableIsEmpty(tbl)
 	return true
 end
 
+
+function Refr_Utils:toFlatTable(tbl, byValue)
+	if tbl == nil then return {} end
+	local result = {}
+	for k, v in pairs(tbl) do
+		if v then result[#result+1] = byValue and v or k end
+	end
+	return result
+end
+
+
 function Refr_Utils:tableDifference(table1, table2)
 	-- returns elements that are in table1 but not in table2
 	local set1 = {}; for _, value in ipairs(table1) do set1[value] = true end
