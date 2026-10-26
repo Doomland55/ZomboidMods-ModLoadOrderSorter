@@ -3,21 +3,17 @@ require "ISUI/ISButton"
 require "ISUI/ISLabel"
 require "ISUI/ISComboBox"
 require "ISUI/ISMouseDrag"
+require "MLOS_UI/MLOS_ContextMenu"
 local utils = require('OptionScreens/ModSelector/Refr_utils')
 
 local MLOS_ScrollExtensions = {}
 
 local PADDING = 8
 local FONT_HGT_SMALL = getTextManager():getFontHeight(UIFont.Small)
-local FONT_HGT_MED = getTextManager():getFontHeight(UIFont.Medium)
-local FONT_HGT_LRG = getTextManager():getFontHeight(UIFont.Large)
 local BUTTON_HGT = FONT_HGT_SMALL + 6
 
 
--- #region Tools
-
--- ============================================================
---                         setRectValues
+-- #region  ====================== Tools =======================
 -- New variables:
 -- ScrollObject: MLOS_scrollRect
 -- ScrollObject.parent: -
@@ -78,37 +74,78 @@ local function setRectValues(scrollObject, x, y, width, height, isOffset)
     scrollObject.MLOS_scrollRect = scrollRect
 end
 
---- @return table
-local function getSelectedItemsDict(scrollObject)
-    if not scrollObject or not scrollObject.selected then return {} end
 
-    if scrollObject.selected_map then
-        return scrollObject.selected_map
+local function getSelectedItemsDict(scrollObject)
+    if not scrollObject then return {} end
+
+    local selected_map = scrollObject.selected_map
+    if selected_map and not utils:tableIsEmpty(selected_map) then
+        return selected_map
     end
-    if scrollObject.selected > 0 and scrollObject.selected <= #scrollObject.items then
-        return { [scrollObject.selected] = true, }
+
+    local selected = scrollObject.selected
+    local items = scrollObject.items
+    if selected and items and selected > 0 and selected <= #items then
+        return { [selected] = true, }
     end
     return {}
 end
 
 
---- returns FLAT table with selected items in scrollObject
 local function getSelectedItemsFlat(scrollObject)
-    if not scrollObject or not scrollObject.selected then return {} end
+    if not scrollObject then return {} end
 
-    if scrollObject.selected_flat then
-        return scrollObject.selected_flat
-    end
-    if scrollObject.selected_map then
-        scrollObject.selected_flat = utils:toFlatTable(scrollObject.selected_map)
-        table.sort(scrollObject.selected_flat)
-        return scrollObject.selected_flat
+    local selected_flat = scrollObject.selected_flat
+    if selected_flat and not utils:tableIsEmpty(selected_flat) then
+        return selected_flat
     end
 
-    if scrollObject.selected > 0 and scrollObject.selected <= #scrollObject.items then
-        return { scrollObject.selected, }
+    local dict = getSelectedItemsDict(scrollObject)
+    if utils:tableIsEmpty(dict) then
+        return {}
     end
-    return {}
+
+    selected_flat = utils:toFlatTable(dict)
+    table.sort(selected_flat)
+
+    scrollObject.selected_flat = selected_flat
+    return selected_flat
+end
+
+
+local function applySelection(scrollObject, newSelectedMap)
+    if not scrollObject then return end
+
+    -- 1. Сбрасываем кэш плоского списка (он пересчитается сам при необходимости)
+    scrollObject.selected_flat = nil
+
+    -- 2. Анализируем новую карту выделений
+    local multiselect_supported = scrollObject.selected_map and true or false
+    local count = 0
+    local firstIndex = nil
+
+    if newSelectedMap then
+        for index, isSelected in pairs(newSelectedMap) do
+            if isSelected then
+                count = count + 1
+                -- Запоминаем минимальный индекс (первый в пачке перемещенных)
+                if not firstIndex or index < firstIndex then
+                    firstIndex = index
+                end
+            end
+        end
+    end
+
+    -- 3. Обновляем selected и selected_map в зависимости от количества
+    if count == 0 then
+        -- Ничего не выделено
+        scrollObject.selected = -1
+        scrollObject.selected_map = multiselect_supported and {} or nil
+    else
+        -- Выделено несколько элементов
+        scrollObject.selected_map = multiselect_supported and newSelectedMap or nil  -- -> сохраняем карту
+        scrollObject.selected = firstIndex -- В selected кладем первый из них (как ведущий элемент/якорь)
+    end
 end
 
 
@@ -122,8 +159,6 @@ local function clearCache(self, search, multiselect)
         self.multiselected_map = {}
     end
 end
-
-
 -- #endregion
 
 
@@ -170,6 +205,7 @@ function MLOS_ScrollExtensions:addTitle(scrollObject, titleText, inCenter, backg
 
 end
 -- #endregion
+
 
 function MLOS_ScrollExtensions:initialResacale(scrollObject, x, y, width, height)
     setRectValues(scrollObject, x, y, width, height)
@@ -454,12 +490,10 @@ local function onMoveButton(self, button, scrollObject)
         toIndex = initial_count + 1
     end
 
-    local result = moveElements(scrollObject.items, selected, toIndex)
-    scrollObject.items = result.items  -- flat table
-    scrollObject.selected = result.movedIndexesFlat[1] -- int
-    scrollObject:ensureVisible(result.movedIndexesFlat[#result.movedIndexesFlat])
-
-    if scrollObject.selected_map ~= nil then scrollObject.selected_map = result.movedIndexesMap end
+    local result = moveElements(scrollObject.items, selected, toIndex, false)
+    scrollObject.items = result.items
+    applySelection(scrollObject, result.movedIndexesMap)
+    scrollObject:ensureVisible(scrollObject.selected)
 
     if scrollObject.parent and scrollObject.parent.searchEntry then
         onChangeText(scrollObject.parent, scrollObject, false)
@@ -500,8 +534,6 @@ function MLOS_ScrollExtensions:addMoveButtons(scrollObject)
 
         buttonsData.start_y = buttonsData.start_y + BUTTON_HGT + PADDING
     end
-
-    -- addMovedHighlight(scrollObject)
 end
 -- #endregion
 
@@ -524,81 +556,14 @@ local function selectItem(selectedMap, row, ctrlPressed, shiftPressed)
             selectedMap[i] = true
         end
     elseif ctrlPressed then
-        selectedMap[row] = selectedMap[row] and true or nil
+        selectedMap[row] = selectedMap[row] == nil and true or nil
         selectionAnchor = row
     else
         selectionAnchor = row
-        selectedMap = { [row] = selectedMap[row] and true or nil }
+        selectedMap = { [row] = selectedMap[row] == nil and true or nil }
     end
     return selectedMap
 end
-
-
-local function multiselectOnMouseDown(self, x, y)
-    local row = self.mouseoverselected
-
-    -- if self.parent.sortingRules:onClickItemInList(self.mouseOverRulesIcon, self.items[row]) then
-    --     if not utils:tableIsEmpty(self.parent.multiselected) then self.parent.multiselected = {} end
-    --     return
-    -- end
-
-    -- if self.mouseOverDragIcon then
-    --     if utils:tableIsEmpty(self.multiselected) or utils:getElementIndex(self.multiselected, self.dragItem.itemindex) == nil then
-    --         self.multiselected = {self.dragItem.itemindex,}
-    --     end
-    --     -- if utils:tableIsEmpty(self.multiselected) then
-    --     --     if utils:getElementIndex(self.multiselected_temp, self.dragItem.itemindex) ~= nil then
-    --     --         self.multiselected = self.multiselected_temp
-    --     --     else
-    --     --         self.multiselected = {self.dragItem.itemindex, }
-    --     --     end
-    --     -- elseif utils:getElementIndex(self.multiselected, self.dragItem.itemindex) == nil then
-    --     --     self.multiselected = {self.dragItem.itemindex, }
-    --     -- end
-
-
-    --     -- if utils:tableIsEmpty(self.multiselected) and utils:getElementIndex(self.multiselected_temp, self.dragItem.itemindex) == nil then
-    --     --     self.multiselected = self.multiselected_temp
-    --     -- else
-    --     --     self.multiselected = {self.dragItem.itemindex, }
-    --     -- end
-
-    --     return
-    -- end
-
-    self.selected_map = selectItem(self.selected_map, row, isCtrlKeyDown(), isShiftKeyDown())
-    -- if not utils:tableIsEmpty(self.selected_map) then
-    --     self.multiselected_temp = {}
-    -- end
-end
-
-
-local function multiselectOnMouseUp(self, x, y)
-    ISScrollingListBox.onMouseUp(self, x, y)
-
-    if self.dragItem ~= nil then
-        local clickedRow = (y / self.itemheight) + 1.0
-        local row = clickedRow - clickedRow % 1
-        local drob = clickedRow % 1
-
-        if row > self.dragItem.itemindex and drob <= 0.5 then row = row - 1 end
-        row = utils:clamp(row, 1, self:size())
-
-        if row ~= self.dragItem.itemindex then
-            local initial_count = #self.items
-            self.parent.multiselected_temp = MLOS_methods:moveElements(self, self.parent.multiselected, row, self.dragItem.itemindex)
-
-            if initial_count ~= #self.items then
-                error("items size changed! Expected size: " .. initial_count .. ", Actual size: " .. #self.items)
-            end
-            self:updateModsColor()
-        end
-    end
-    self.dragItem = nil
-end
-
-
-
 
 
 function MLOS_ScrollExtensions:addMultiselectionSupport(scrollObject)
@@ -606,20 +571,8 @@ function MLOS_ScrollExtensions:addMultiselectionSupport(scrollObject)
 
     scrollObject.selected_map = {}
     scrollObject.selected_flat = {}
-
-    local origOnMouseDown  = scrollObject.onMouseDown
-    scrollObject.onMouseDown = function(slf, x, y)
-        origOnMouseDown(slf, x, y)
-        multiselectOnMouseDown(slf, x, y)
-    end
-
-    -- scrollObject.onMouseUp = MultiselectOnMouseUp
-
 end
-
-
 -- #endregion
-
 
 
 -- #region Override render
@@ -683,12 +636,7 @@ local function modListBox_onMouseUp(self, x, y)
 
             local result = moveElements(self.items, selectedIndexes, row, isHalf)
             self.items = result.items  -- flat table
-            self.selected = result.movedIndexesFlat[1] -- int
-
-            if self.selected_map then
-                self.selected_map = result.movedIndexesMap
-            end
-
+            applySelection(self, result.movedIndexesMap)
             self:updateModsColor()
         end
     end
@@ -698,15 +646,31 @@ end
 
 function MLOS_ScrollExtensions:modListBoxOverrides(scrollObject)
     local origOnMouseDown = scrollObject.onMouseDown
+
     scrollObject.onMouseDown = function(slf, x, y)
         origOnMouseDown(slf, x, y)
-        if (scrollObject.dragItem ~= nil and scrollObject.selected == scrollObject.mouseoverselected) or scrollObject.mouseoverselected < 1 then return end
 
-        local row = scrollObject.mouseoverselected
-        slf.selected = slf.selected ~= row and row or 0
+        local row = slf.mouseoverselected
+        local itemsCount = slf.items and #slf.items or 0
+        if not row or row < 1 or row > itemsCount then
+            return
+        end
+
+        local selectedDict = getSelectedItemsDict(slf)
+        local isRowAlreadySelected = selectedDict[row] == true
+
+        if slf.dragItem ~= nil then
+            if isRowAlreadySelected then
+                return
+            end
+            applySelection(slf, { [row] = true })
+            return
+        end
+        slf.selected = slf.selected ~= row and row or -1
 
         if slf.selected_map == nil then return end
-        slf.selected_map[row] = not slf.selected_map[row]
+        slf.selected_map = selectItem(slf.selected_map, row, isCtrlKeyDown(), isShiftKeyDown())
+        applySelection(slf, slf.selected_map)
     end
 
     scrollObject.onMouseUp = modListBox_onMouseUp
@@ -716,18 +680,105 @@ end
 -- #endregion
 
 
-
--- #region Drag Drop
-
+-- #region ============== RMB Item Context Menu ===============
+-- New variables:
+-- ScrollObject: - 
+-- ScrollObject.parent: -
 -- ============================================================
---                        Drag & Drop
--- ============================================================
-function MLOS_ScrollExtensions:addDragAndDrop(scrollObject)
-    if true then return end
+
+
+local function initialiseItemContextMenu(scrollObject)
+    if scrollObject.MLOS_ItemContextMenu ~= nil then return end
+
+    scrollObject.MLOS_ItemContextMenu = {}
+
+    local origOnRightMouseUp = scrollObject.onRightMouseUp
+    scrollObject.onRightMouseUp = function(slf, x, y)
+        if origOnRightMouseUp then origOnRightMouseUp(slf, x, y) end
+
+        -- 1. Определяем строку под курсором
+        local row = slf:rowAt(x, y)
+        local itemsCount = slf.items and #slf.items or 0
+        if not row or row < 1 or row > itemsCount then return end
+
+        -- 2. Логика мультиселекта
+        local selectedDict = getSelectedItemsDict(slf)
+        if not selectedDict[row] then
+            applySelection(slf, { [row] = true })
+        end
+
+        -- 3. Собираем данные элементов
+        local selectedIndexes = getSelectedItemsFlat(slf)
+        local selectedRawItems = {}
+        for _, idx in ipairs(selectedIndexes) do
+            local itemData = slf.items[idx]
+            if itemData then
+                table.insert(selectedRawItems, itemData.item or itemData)
+            end
+        end
+        local clickedRawItem = slf.items[row].item or slf.items[row]
+
+        -- 4. Закрываем старое меню, если оно было открыто
+        if slf.MLOS_activeContextMenu and slf.MLOS_activeContextMenu:isReallyVisible() then
+            slf.MLOS_activeContextMenu:close()
+            slf.MLOS_activeContextMenu = nil
+        end
+
+        -- 5. Абсолютные координаты клика
+        local screenX = slf:getAbsoluteX() + x + slf:getXScroll() + PADDING
+        local screenY = slf:getAbsoluteY() + y + slf:getYScroll() - BUTTON_HGT * 0.5
+
+        -- 6. Создаем НАШЕ меню
+        local context = MLOS_ContextMenu:new(screenX, screenY)
+        slf.MLOS_activeContextMenu = context
+
+        -- 7. Заполняем опциями
+        for _, entry in ipairs(slf.MLOS_ItemContextMenu) do
+            local isEnabled = true
+            if entry.enabled ~= nil then
+                if type(entry.enabled) == "function" then
+                    isEnabled = entry.enabled(selectedRawItems, clickedRawItem, entry.arguments)
+                else
+                    isEnabled = entry.enabled
+                end
+            end
+
+            local title = entry.name
+            if type(title) == "function" then
+                title = title(selectedRawItems, clickedRawItem)
+            end
+            
+            if isEnabled then
+                context:addOption(
+                    title,
+                    entry.tooltip,
+                    slf,
+                    entry.menuFunction,
+                    selectedRawItems,
+                    clickedRawItem
+                )
+            end
+        end
+
+        -- 8. Финализируем и показываем меню
+        context:display()
+    end
 end
--- #endregion 
 
+function MLOS_ScrollExtensions:addItemContextMenu(scrollObject, menuName, tooltip, menuFunc, enabledFunc)
+    if not scrollObject or not scrollObject.items then return end
 
+    -- patchIsContextMenu()
+    initialiseItemContextMenu(scrollObject)
 
+    scrollObject.MLOS_ItemContextMenu[#scrollObject.MLOS_ItemContextMenu + 1] = {
+        name = menuName,
+        tooltip = tooltip,
+        menuFunction = menuFunc,
+        enabled = enabledFunc
+    }
+end
+
+-- #endregion
 
 return MLOS_ScrollExtensions

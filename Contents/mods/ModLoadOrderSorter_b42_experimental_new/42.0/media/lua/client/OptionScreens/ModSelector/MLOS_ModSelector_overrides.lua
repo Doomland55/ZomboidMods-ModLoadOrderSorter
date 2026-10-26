@@ -23,19 +23,12 @@ local BUTTON_HGT = math.max(25, FONT_HGT_SMALL + 3 * 2)
 local PADDING = 10
 
 local ModLoadOrderPanelOverride = ModSelector.ModLoadOrderPanel
--- local ModOrderListBoxOverride = ModSelector.ModOrderListBox
 
--- local rulesTexture = getTexture("media/ui/MLOS_Button_Rules.png")
--- local toClipboardTexture = getTexture("media/ui/MLOS_To_Clipboard.png")
--- local toFileTexture = getTexture("media/ui/MLOS_To_Folder.png")
-
--- local modsInfoFileName="sorted_mods_info.ini"
 
 --================================================
 --      ModLoadOrderPanelOverride Overrides
 --================================================
 local origCreateChildren = ModLoadOrderPanelOverride.createChildren
--- local origOnMouseUpOutside = ModLoadOrderPanelOverride.onMouseUpOutside
 
 
 function ModLoadOrderPanelOverride:fixMissingModsCrash()
@@ -133,18 +126,40 @@ function ModLoadOrderPanelOverride:createChildren()
     scrollExt:addSearchEntry(self.modList, - (PADDING * 1.4 + BUTTON_HGT))
     scrollExt:addMoveButtons(self.modList)
     -- scrollExt:addMultiselectionSupport(self.modList)
+
+
+    scrollExt:addItemContextMenu(self.modList,
+        function(selectedItems)
+            if #selectedItems > 1 then return "Disable (" .. #selectedItems .. ")"
+            else return "Disable" end
+        end,
+        "Disables selected mods",
+        function(slf, selectedItems, clickedRawItem)
+            for _, item in ipairs(selectedItems) do
+                ModSelector.instance.model:forceActivateMods(item.modInfo, false)
+
+            end
+        end
+    )
+
+    scrollExt:addItemContextMenu(self.modList,
+        "Debug print",
+        "Print mod list",
+        function(slf, selectedItems, clickedRawItem)
+            utils:tprint(self.modList.items)
+        end
+    )
+
+    -- NEW ELEMENTS 
+    local modFilesScroll = ISScrollingListBox:new(width * 0.5 + PADDING, 50, width * 0.5 - PADDING * 3, height - (50 + PADDING + BUTTON_HGT + PADDING))
+    modFilesScroll:initialise()
+    modFilesScroll:instantiate()
+    self:addChild(modFilesScroll)
+
+    scrollExt:addTitle(modFilesScroll, "Fiels", true, {r=0.28, g=0.35, b=0.8, a=0.8})
+    scrollExt:addBackground(modFilesScroll, nil, {})
 end
 
-
-
-
--- function ModLoadOrderPanelOverride:onMouseUpOutside(x, y)
---     origOnMouseUpOutside(self, x, y)
---     if self.modList.dragItem ~= nil then return end
---     if not self:isMouseOver() then
---         self.multiselected = {}
---     end
--- end
 
 
 -- function ModLoadOrderPanelOverride:autoSort()
@@ -161,17 +176,6 @@ end
 
 -- function ModLoadOrderPanelOverride:getTooltip(modInfo)
 --     return nil
--- end
-
-
--- function ModLoadOrderPanelOverride:addCache()
---     self.foundItems = {}
---     self.foundIndex = 0
---     self.foundCounter = 0
-
---     self.multiselected = {}
---     self.multiselected_temp = {}
---     self.multiselected_counter = 150
 -- end
 
 
