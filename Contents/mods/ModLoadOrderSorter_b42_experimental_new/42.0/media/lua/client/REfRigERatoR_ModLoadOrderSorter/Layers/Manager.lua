@@ -116,7 +116,10 @@ function core.layersManager:initialise(modsList, callbacks)
 	-- 2. mod info (from game + mod.info, merged with sorting rules)
 	self.currentOrder = layers.modInfo:getData(modsList, layers.sortingRules.data, callbacks.reread)
 
-	-- 3. mod files: cache read now, stale mods analysed async with progress
+	-- 3. mod files: initialised LAST, so it can consume data of the layers
+	--    below (modInfo / sortingRules) via core.layers, e.g. to tell apart
+	--    intentional overwrites (explicit dependencies) from real conflicts.
+	--    Cache read is synchronous, stale mods are analysed async with progress
 	layers.modFiles:getData(modsList, {
 		reread = callbacks.reread,
 		onProgress = callbacks.onFilesProgress,

@@ -33,11 +33,27 @@ MLOS_ModsFiles.progress = { current = 0, total = 0 }
 --      Cache helpers
 --================================================
 
---- Cheap signature of a mod: mod.info version + number of lua files.
---- Used to detect changed mods without reading every file.
+--- Best-effort workshop update timestamp (seconds) of a mod.
+--- Uses querySteamWorkshopItemDetails when the game build exposes it to Lua;
+--- returns nil for local mods or builds without the API.
+---@param modInfo table ModInfo object (item.modInfo)
+---@return string|nil
+local function getWorkshopUpdateTimestamp(modInfo)
+	local okId, wsId = pcall(utils.getWorkshopId, modInfo)
+	if not okId or wsId == nil or wsId == "" then return nil end
+	if type(querySteamWorkshopItemDetails) ~= "function" then return nil end
+	local ok, res = pcall(querySteamWorkshopItemDetails, wsId)
+	if not ok or type(res) ~= "table" then return nil end
+	return tostring(res.timeUpdated or res.updateTime or res.time_updated or res.lastUpdated or "") or nil
+end
+
+--- Cheap signature of a mod: mod.info version + number of lua files +
+--- workshop update timestamp (when available). Used to detect changed mods
+--- without reading every file.
 ---@param modId string
+---@param modInfo table|nil ModInfo object of the mod
 ---@return string
-local function getModSignature(modId)
+local function getModSignature(modId, modInfo)
 	local version = ""
 	local ok, reader = pcall(getModFileReader, modId, "mod.info", false)
 	if ok and reader then
@@ -54,7 +70,9 @@ local function getModSignature(modId)
 	local okFiles, files = pcall(listFilesInModDirectory, modId, LUA_DIR)
 	if okFiles and files then count = files:size() end
 
-	return tostring(version) .. "|" .. tostring(count)
+	local updateTime = modInfo and getWorkshopUpdateTimestamp(modInfo) or ""
+
+	return tostring(version) .. "|" .. tostring(count) .. "|" .. tostring(updateTime)
 end
 
 
@@ -211,8 +229,10 @@ local function parseFileFunctions(modId, filename)
 			local cleanLine = line:gsub("%-%-.*$", "") -- strip comments
 
 			if hasAssign then
-				-- declared local tables (not external classes)
-				for tblName in cleanLine:gmatch("([%w_]+)%s*=%s*[{%w_:]+") do
+				-- declared local tables (real table literals only: "X = {").
+				-- "local X = SomeClass:derive()" or "X = X or {}" are NOT local
+				-- tables - methods on them modify an external/shared class.
+				for tblName in cleanLine:gmatch("([%w_]+)%s*=%s*%{") do
 					declaredTables[tblName] = true
 				end
 
@@ -300,42 +320,62 @@ function MLOS_ModsFiles:getData(modsList, opts)
 			dir = dir and dir:gsub("[\\/]", separator)
 			local isLoaded = (dir ~= nil and loadedDirs[dir] == true)
 
-			if not isLoaded then
-				table.insert(self.notLoaded, modId)
+			-- file list: for loaded mods the authoritative list comes from getLoadedLua(),
+			-- for the rest (or when the loaded list is empty) - from disk
+			local files
+			if isLoaded then
+				files = listLoadedModFiles(modId, dir)
+				if #files == 0 then files = self:listModLuaFiles(modId) end
+			else
+				files = self:listModLuaFiles(modId)
 			end
 
-			local signature = getModSignature(modId)
+			local signature = getModSignature(modId, item.modInfo)
 			local cached = cache[modId]
-			local fresh = (cached ~= nil and cached.complete == true and cached.signature == signature)
 
-			if fresh then
-				-- cache is up to date: use it as is, no rescan needed
+			if #files == 0 then
+				-- the mod has no lua files at all (textures/recipes/etc. only):
+				-- nothing to analyse, so it is complete by definition
 				self.data[modId] = {
-					rootDir = cached.rootDir or dir,
-					files = cached.files or self:listModLuaFiles(modId),
-					modifications = cached.modifications or {},
+					rootDir = dir,
+					files = {},
+					modifications = (cached and cached.modifications) or {},
 					signature = signature,
 					complete = true
 				}
 			else
-				table.insert(self.staleMods, modId)
-				local files
-				if isLoaded then
-					files = listLoadedModFiles(modId, dir) -- authoritative list of loaded files
-					for _, f in ipairs(files) do
-						table.insert(queue, { modId = modId, relPath = f })
-					end
-				else
-					-- not loaded: file list from disk only, contents are NOT analysed
-					files = self:listModLuaFiles(modId)
+				if not isLoaded then
+					-- has lua files, but none of them are loaded in this session
+					table.insert(self.notLoaded, modId)
 				end
-				self.data[modId] = {
-					rootDir = dir,
-					files = files,
-					modifications = (cached and cached.modifications) or {},
-					signature = signature,
-					complete = false
-				}
+
+				local fresh = (cached ~= nil and cached.complete == true and cached.signature == signature)
+
+				if fresh then
+					-- cache is up to date: use it as is, no rescan needed
+					self.data[modId] = {
+						rootDir = cached.rootDir or dir,
+						files = cached.files or files,
+						modifications = cached.modifications or {},
+						signature = signature,
+						complete = true
+					}
+				else
+					table.insert(self.staleMods, modId)
+					self.data[modId] = {
+						rootDir = dir,
+						files = files,
+						modifications = (cached and cached.modifications) or {},
+						signature = signature,
+						complete = false
+					}
+					-- contents are analysed only for loaded mods
+					if isLoaded then
+						for _, f in ipairs(files) do
+							table.insert(queue, { modId = modId, relPath = f })
+						end
+					end
+				end
 			end
 		end
 	end
@@ -353,12 +393,7 @@ function MLOS_ModsFiles:getData(modsList, opts)
 			if opts.onComplete then opts.onComplete(self.data) end
 		end)
 	else
-		-- nothing to scan: everything came from the cache
-		for modId, d in pairs(self.data) do
-			if utils:contains(self.staleMods, modId) and loadedDirs[d.rootDir] then
-				d.complete = true
-			end
-		end
+		-- nothing to scan: everything came from the cache (or needs no analysis)
 		if opts.onComplete then opts.onComplete(self.data) end
 	end
 

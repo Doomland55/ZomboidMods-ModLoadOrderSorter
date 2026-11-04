@@ -36,11 +36,41 @@ local function addEdge(edges, from, to, weight)
 end
 
 
+local function hasAnyEdge(edges, from, to)
+	for _, e in ipairs(edges[from] or {}) do
+		if e.to == to then return true end
+	end
+	return false
+end
+
+
+--- Soft edge (keep current relative order). Never added against an existing
+--- edge in the opposite direction - that would create an artificial cycle.
+local function addSoftEdge(edges, from, to, weight)
+	if hasAnyEdge(edges, to, from) then return end
+	addEdge(edges, from, to, weight)
+end
+
+
 local function sortByCurrentOrder(ids, orderIndex)
 	table.sort(ids, function(a, b)
 		return (orderIndex[a] or 1e9) < (orderIndex[b] or 1e9)
 	end)
 	return ids
+end
+
+
+--- True when a hard dependency (require / loadAfter / loadBefore / sorting
+--- rules, i.e. weight >= W_RULES) exists between a and b in any direction.
+--- Such an explicit dependency means the overwrite order was set on purpose.
+local function hasHardEdge(edges, a, b)
+	for _, e in ipairs(edges[a] or {}) do
+		if e.to == b and e.weight >= W_RULES then return true end
+	end
+	for _, e in ipairs(edges[b] or {}) do
+		if e.to == a and e.weight >= W_RULES then return true end
+	end
+	return false
 end
 
 
@@ -125,14 +155,27 @@ function MLOS_SortingCore:buildGraph(modsList)
 			end
 
 			if #overwrites > 1 then
-				-- two mods fully overwrite the same function: real conflict
-				local mods = sortByCurrentOrder(utils:MergeTablesDedup({}, overwrites), orderIndex)
-				table.insert(self.warnings, {
-					severity = "CRITICAL",
-					layer = "ModsFiles",
-					title = getText("UI_MLOS_Conflict_Overwrite_Title"),
-					message = getText("UI_MLOS_Conflict_Overwrite_Msg", table.concat(mods, ", "), target)
-				})
+				-- several mods fully overwrite the same function. When two of them
+				-- are already connected by an explicit hard dependency (require /
+				-- loadAfter / loadBefore / sorting rules), the overwrite was made
+				-- on purpose and no warning is needed for that pair.
+				local conflicting = {}
+				for i = 1, #overwrites do
+					for j = i + 1, #overwrites do
+						local a, b = overwrites[i], overwrites[j]
+						if not hasHardEdge(edges, a, b) then
+							table.insert(conflicting, a .. " <-> " .. b)
+						end
+					end
+				end
+				if #conflicting > 0 then
+					table.insert(self.warnings, {
+						severity = "CRITICAL",
+						layer = "ModsFiles",
+						title = getText("UI_MLOS_Conflict_Overwrite_Title"),
+						message = getText("UI_MLOS_Conflict_Overwrite_Msg", table.concat(conflicting, "; "), target)
+					})
+				end
 			end
 
 			for _, ow in ipairs(overwrites) do
@@ -146,7 +189,7 @@ function MLOS_SortingCore:buildGraph(modsList)
 				if #group > 1 then
 					sortByCurrentOrder(group, orderIndex)
 					for i = 2, #group do
-						addEdge(edges, group[i - 1], group[i], W_SOFT)
+						addSoftEdge(edges, group[i - 1], group[i], W_SOFT)
 					end
 				end
 			end
@@ -180,13 +223,13 @@ function MLOS_SortingCore:sort(modsList)
 		if d == 0 then table.insert(ready, id) end
 	end
 
+	-- higher priority first; on equal priority sort by mod id (name),
+	-- so the result is deterministic and does not depend on the previous order
 	local function better(a, b)
 		local pa = (modInfo[a] and modInfo[a].priority) or 0
 		local pb = (modInfo[b] and modInfo[b].priority) or 0
 		if pa ~= pb then return pa > pb end
-		local oa, ob = orderIndex[a] or 1e9, orderIndex[b] or 1e9
-		if oa ~= ob then return oa < ob end
-		return tostring(a) < tostring(b)
+		return tostring(a):lower() < tostring(b):lower()
 	end
 
 	local sorted = {}
