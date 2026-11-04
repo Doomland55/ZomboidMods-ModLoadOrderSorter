@@ -211,12 +211,17 @@ end
 
 --- Kahn's topological sort. Among all currently available nodes the one with
 --- the highest priority (category + rules) is placed first; ties are broken by
---- the current list order and then by mod id. If a cycle is found, the
---- remaining nodes are appended by priority and a warning is emitted.
+--- mod id (name). When a cycle is found, the WEAKEST remaining edge is removed
+--- and the sort continues - soft "keep current order" hints (shadowing / hook
+--- order, weights 5-10) are broken first, hard dependencies (require /
+--- loadAfter / loadBefore / rules, weights >= 90) are preserved whenever
+--- possible. Broken edges are reported as a warning.
 ---@param modsList table modList.items
 ---@return table sorted array of modIds
 function MLOS_SortingCore:sort(modsList)
 	local edges, enabled, orderIndex = self:buildGraph(modsList)
+	self.lastEdges = edges
+	self.brokenEdges = {}
 	local modInfo = (core.layers.modInfo and core.layers.modInfo.data) or {}
 
 	local indegree = {}
@@ -243,39 +248,72 @@ function MLOS_SortingCore:sort(modsList)
 
 	local sorted = {}
 	local placed = {}
-	while #ready > 0 do
-		local best = 1
-		for i = 2, #ready do
-			if better(ready[i], ready[best]) then best = i end
-		end
-		local id = table.remove(ready, best)
-		if not placed[id] then
-			placed[id] = true
-			table.insert(sorted, id)
-			for _, e in ipairs(edges[id] or {}) do
-				indegree[e.to] = indegree[e.to] - 1
-				if indegree[e.to] == 0 then table.insert(ready, e.to) end
+
+	local function placeReady()
+		while #ready > 0 do
+			local best = 1
+			for i = 2, #ready do
+				if better(ready[i], ready[best]) then best = i end
+			end
+			local id = table.remove(ready, best)
+			if not placed[id] then
+				placed[id] = true
+				table.insert(sorted, id)
+				for _, e in ipairs(edges[id] or {}) do
+					indegree[e.to] = indegree[e.to] - 1
+					if indegree[e.to] == 0 then table.insert(ready, e.to) end
+				end
 			end
 		end
 	end
 
-	-- cycle detected: place the rest by priority and warn the player
-	local remaining = {}
-	for id in pairs(enabled) do
-		if not placed[id] then table.insert(remaining, id) end
+	placeReady()
+
+	-- cycle breaking: remove the weakest edge between unplaced nodes
+	while true do
+		local remaining = 0
+		for id in pairs(enabled) do
+			if not placed[id] then remaining = remaining + 1 end
+		end
+		if remaining == 0 then break end
+
+		local weakest = nil -- { list=..., idx=..., from=..., to=..., weight=... }
+		for from, list in pairs(edges) do
+			if not placed[from] then
+				for i, e in ipairs(list) do
+					if not placed[e.to] then
+						if weakest == nil or e.weight < weakest.weight then
+							weakest = { list = list, idx = i, from = from, to = e.to, weight = e.weight }
+						end
+					end
+				end
+			end
+		end
+		if weakest == nil then break end -- safety net, should not happen
+
+		table.remove(weakest.list, weakest.idx)
+		indegree[weakest.to] = indegree[weakest.to] - 1
+		table.insert(self.brokenEdges, { from = weakest.from, to = weakest.to, weight = weakest.weight })
+		if indegree[weakest.to] == 0 then table.insert(ready, weakest.to) end
+		placeReady()
 	end
-	if #remaining > 0 then
-		table.sort(remaining, better)
+
+	-- report broken edges (usually only soft order-hints were dropped)
+	if #self.brokenEdges > 0 then
+		local involved = {}
+		local hasHard = false
+		for _, e in ipairs(self.brokenEdges) do
+			if e.weight >= W_RULES then hasHard = true end
+			if not utils:contains(involved, e.from) then table.insert(involved, e.from) end
+			if not utils:contains(involved, e.to) then table.insert(involved, e.to) end
+		end
+		table.sort(involved)
 		table.insert(self.warnings, {
-			severity = "CRITICAL",
+			severity = hasHard and "CRITICAL" or "WARNING",
 			layer = "SortingRules",
 			title = getText("UI_MLOS_Cycle_Title"),
-			message = getText("UI_MLOS_Cycle_Msg", table.concat(remaining, ", "))
+			message = getText("UI_MLOS_Cycle_Msg", table.concat(involved, ", "))
 		})
-		for _, id in ipairs(remaining) do
-			placed[id] = true
-			table.insert(sorted, id)
-		end
 	end
 
 	return sorted
