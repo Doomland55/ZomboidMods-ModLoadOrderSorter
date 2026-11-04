@@ -205,7 +205,38 @@ function MLOS_SortingCore:buildGraph(modsList)
 		end
 	end
 
-	return edges, enabled, orderIndex
+	-- 4. effective category per mod: a mod must never sit in a category that
+	--    comes AFTER the category of a mod which depends on it. For every hard
+	--    edge U -> V (U loads before V, weight >= W_RULES) the category index
+	--    of U is pulled up to at most the index of V (fixpoint propagation).
+	local catCount = #core.rawCategoryOrder
+	local catIndex = {}
+	local enabledCount = 0
+	for id in pairs(enabled) do
+		enabledCount = enabledCount + 1
+		local info = modInfo[id]
+		local cat = (info and info.category) or "undefined"
+		catIndex[id] = core.categoryOrder[cat] or catCount
+		if info then info.effectiveCategory = core.rawCategoryOrder[catIndex[id]] end
+	end
+	for _ = 1, enabledCount do
+		local changed = false
+		for from, list in pairs(edges) do
+			if catIndex[from] ~= nil then
+				for _, e in ipairs(list) do
+					if e.weight >= W_RULES and catIndex[e.to] ~= nil and catIndex[e.to] < catIndex[from] then
+						catIndex[from] = catIndex[e.to]
+						local info = modInfo[from]
+						if info then info.effectiveCategory = core.rawCategoryOrder[catIndex[from]] end
+						changed = true
+					end
+				end
+			end
+		end
+		if not changed then break end
+	end
+
+	return edges, enabled, orderIndex, catIndex
 end
 
 
@@ -219,10 +250,11 @@ end
 ---@param modsList table modList.items
 ---@return table sorted array of modIds
 function MLOS_SortingCore:sort(modsList)
-	local edges, enabled, orderIndex = self:buildGraph(modsList)
+	local edges, enabled, orderIndex, catIndex = self:buildGraph(modsList)
 	self.lastEdges = edges
 	self.brokenEdges = {}
 	local modInfo = (core.layers.modInfo and core.layers.modInfo.data) or {}
+	local catCount = #core.rawCategoryOrder
 
 	local indegree = {}
 	for id in pairs(enabled) do indegree[id] = 0 end
@@ -237,11 +269,25 @@ function MLOS_SortingCore:sort(modsList)
 		if d == 0 then table.insert(ready, id) end
 	end
 
-	-- higher priority first; on equal priority sort by mod id (name),
-	-- so the result is deterministic and does not depend on the previous order
+	-- effective priority: the category part is recomputed from the EFFECTIVE
+	-- category index (overridden during graph building so a required mod is
+	-- never in a later category than the mod that requires it); all other
+	-- modifiers of the declared priority (preorder, loadFirst/loadLast) are kept
+	local function effPriority(id)
+		local info = modInfo[id]
+		if not info then return 0 end
+		local declaredIdx = core.categoryOrder[info.category] or catCount
+		local declaredPart = catCount * 10 - (declaredIdx - 1) * 10
+		local adj = (info.priority or declaredPart) - declaredPart
+		return (catCount * 10 - ((catIndex[id] or catCount) - 1) * 10) + adj
+	end
+
+	-- sort by effective category/priority first; on equal priority sort by mod
+	-- id (name), so the result is deterministic and does not depend on the
+	-- previous order
 	local function better(a, b)
-		local pa = (modInfo[a] and modInfo[a].priority) or 0
-		local pb = (modInfo[b] and modInfo[b].priority) or 0
+		local pa = effPriority(a)
+		local pb = effPriority(b)
 		if pa ~= pb then return pa > pb end
 		return tostring(a):lower() < tostring(b):lower()
 	end

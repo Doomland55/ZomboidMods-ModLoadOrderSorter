@@ -118,8 +118,8 @@ function core.layersManager:dumpDebugData(modsList)
 		local info = modInfo[id] or {}
 		local fdata = modFiles[id] or {}
 		local sr = info.sortingRules or rules[id] or {}
-		table.insert(parts, string.format("[%d] %s | name=%s | category=%s | priority=%s | complete=%s",
-			i, id, tostring(info.name), tostring(info.category), tostring(info.priority), tostring(fdata.complete)))
+		table.insert(parts, string.format("[%d] %s | name=%s | category=%s | effectiveCategory=%s | priority=%s | complete=%s",
+			i, id, tostring(info.name), tostring(info.category), tostring(info.effectiveCategory), tostring(info.priority), tostring(fdata.complete)))
 		table.insert(parts, "  require=" .. utils:getString(info.requirements))
 		table.insert(parts, "  loadAfter=" .. utils:getString(info.loadAfter))
 		table.insert(parts, "  loadBefore=" .. utils:getString(info.loadBefore))
