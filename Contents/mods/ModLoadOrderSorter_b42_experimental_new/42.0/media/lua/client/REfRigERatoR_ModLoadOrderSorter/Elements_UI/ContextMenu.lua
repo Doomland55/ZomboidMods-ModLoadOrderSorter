@@ -8,18 +8,14 @@ function MLOS_ContextMenu:new(x, y)
     setmetatable(o, self)
     self.__index = self
 
-    o.x = x
-    o.y = y
     o.options = {}
     o.itemHeight = 22
     o.minWidth = 140
     o.pad = 3
 
-    -- Стиль рамки в духе интерфейса PZ
     o.backgroundColor = {r = 0.10, g = 0.10, b = 0.10, a = 0.95}
     o.borderColor =     {r = 0.35, g = 0.35, b = 0.35, a = 1.00}
 
-    o:setAlwaysOnTop(true)
     return o
 end
 
@@ -27,7 +23,7 @@ end
 function MLOS_ContextMenu:addOption(title, tooltip, target, onSelect, ...)
     local opt = {
         title = title,
-        tooltip = tooltip, 
+        tooltip = tooltip,
         target = target,
         onSelect = onSelect,
         args = { ... }

@@ -1,0 +1,54 @@
+local Cfg = {
+    bigWindow = true,
+    search = true,
+    moveMenu = true,
+    tooltips = true,
+    modTooltips = true,
+    categoryColours = true,
+    categoryAlpha = 0.1,
+    categoryBar = true,
+    fileOverrides = true,
+    legend = true,
+    buttonIcons = true,
+}
+
+
+local OPTIONS = {
+    { "loadOrderBigWindow", "bigWindow" },
+    { "loadOrderSearch", "search" },
+    { "loadOrderMoveMenu", "moveMenu" },
+    { "loadOrderTooltips", "tooltips" },
+    { "loadOrderModTooltips", "modTooltips" },
+    { "loadOrderCategoryColours", "categoryColours" },
+    { "loadOrderCategoryAlpha", "categoryAlpha", slider = { 0.05, 0.5, 0.05 } },
+    { "loadOrderCategoryBar", "categoryBar" },
+    { "loadOrderFileOverrides", "fileOverrides", "ModLoadOrderSorterExtensionZB" },
+    { "loadOrderLegend", "legend" },
+    { "loadOrderButtonIcons", "buttonIcons" },
+}
+
+local options = PZAPI.ModOptions:create("ModLoadOrderSorterExtension", "UI_MLOSExt_Title")
+local keys = {}
+
+for _, entry in ipairs(OPTIONS) do
+    local id, key, r = entry[1], entry[2], entry.slider
+    if not entry[3] or getActivatedMods():contains(entry[3]) then
+        local label, tip = "UI_MLOSExt_" .. key, "UI_MLOSExt_" .. key .. "Tip"
+        if r then
+            options:addSlider(id, label, r[1], r[2], r[3], Cfg[key], tip)
+        else
+            options:addTickBox(id, label, Cfg[key], tip)
+        end
+        keys[id] = key
+    end
+end
+
+function options:apply()
+    for id, key in pairs(keys) do
+        Cfg[key] = self:getOption(id):getValue()
+    end
+end
+
+Events.OnMainMenuEnter.Add(function() options:apply() end)
+
+return Cfg

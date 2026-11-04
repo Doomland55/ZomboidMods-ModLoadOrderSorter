@@ -10,13 +10,14 @@
 ---
 --- This mod has no dependencies
 ---
-require('OptionScreens/ModSelector/ModSelector')
-local utils = require('OptionScreens/ModSelector/Refr_utils')
-local scrollExt = require('OptionScreens/MLOS_UI/MLOS_ScrollExtensions')
--- local MLOS_methods = require('OptionScreens/ModSelector/MLOS_Methods')
--- local MLOS_sorting = require('OptionScreens/ModSelector/MLOS_sorting')
--- local SortingRulesPanel = require('OptionScreens/ModSelector/MLOS_SortingRulesPanel')
--- local mlos_ScrolList = require('OptionScreens/MLOS_UI/MLOS_ScrollPanel')
+require("ISUI/ISProgressBar")
+require("OptionScreens/ModSelector/ModSelector")
+
+local utils = require('REfRigERatoR_ModLoadOrderSorter/Core/1_Utils')
+local core = require('REfRigERatoR_ModLoadOrderSorter/Core/Core')
+local scrollExt = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/ScrollExtensions')
+local popup = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/WarningPopup')
+
 
 local FONT_HGT_SMALL = getTextManager():getFontHeight(UIFont.Small)
 local BUTTON_HGT = math.max(25, FONT_HGT_SMALL + 3 * 2)
@@ -25,12 +26,24 @@ local PADDING = 10
 local ModLoadOrderPanelOverride = ModSelector.ModLoadOrderPanel
 
 
+-- #region =========== Local Functions ===========
+-- local function updateModsCache(enabldMods)
+--     SortingRules:getData(true)
+-- 	local currentOrder = ModsInfo:UpdateData(enabldMods, SortingRules.data)
+-- end
+
+
+
+-- #endregion
+
 --================================================
 --      ModLoadOrderPanelOverride Overrides
 --================================================
 local origCreateChildren = ModLoadOrderPanelOverride.createChildren
+local origInstantiate = ModLoadOrderPanelOverride.instantiate
 
 
+-- #region ================ FIXES =================
 function ModLoadOrderPanelOverride:fixMissingModsCrash()
     local modArray = self.model:getActiveMods():getMods():clone()
     local missedMods = {}
@@ -47,6 +60,7 @@ function ModLoadOrderPanelOverride:fixMissingModsCrash()
         pcall(function(missedMods) error("\n[WARNING] --> [MLOS] Mods: [" .. table.concat(missedMods, ', ') .. "] were not found. They will be disabled to prevent the game from crashing.\n") end, missedMods)
     end
 end
+
 
 function ModLoadOrderPanelOverride:fixBackButtonJoypadFocus()
     local fixedBackFunc = function(slf, button, x, y)
@@ -82,11 +96,13 @@ function ModLoadOrderPanelOverride:fixBackButtonJoypadFocus()
 
     self.backButton:setOnClick(fixedBackFunc)
 end
+-- #endregion
 
 -- #region ============== Autoscroll ==============
 -- Scroll list box up or down if mouse is outside 
 -- ================================================
 function ModLoadOrderPanelOverride:render()
+    ISPanelJoypad.render(self)
     ISPanelJoypad.render(self)
     if self.modList.dragItem == nil then return end
 
@@ -98,7 +114,16 @@ function ModLoadOrderPanelOverride:render()
 
     self.modList:setYScroll(self.modList:getYScroll() - (diff * 0.02 * UIManager.getMillisSinceLastRender()))
 end
--- #endregion
+--#endregion
+
+
+function ModLoadOrderPanelOverride:instantiate()
+    origInstantiate(self)
+    print("MLOS_Start")
+    core.layersManager:initialise(self.modList.items)
+    print("MLOS_Finish")
+    -- updateModsCache(self.modList.items)
+end
 
 
 function ModLoadOrderPanelOverride:createChildren()
@@ -118,14 +143,45 @@ function ModLoadOrderPanelOverride:createChildren()
     self:setY((scrHeight - height) * 0.5)
     self:setHeight(height)
 
+    -- NEW UI Elements --
+    self.MLOS_ProgressBar = ISProgressBar:new((width - 100) * 0.5 , self.backButton.y, 100, BUTTON_HGT, "")
+    self.MLOS_ProgressBar:setVisible(false)
+    self.MLOS_ProgressBar:setAnchorLeft(true)
+    self.MLOS_ProgressBar:setAnchorRight(false)
+    self.MLOS_ProgressBar:setAnchorTop(false)
+    self.MLOS_ProgressBar:setAnchorBottom(true)
+    self.MLOS_ProgressBar:ignoreWidthChange()
+    self.MLOS_ProgressBar:ignoreHeightChange()
+    self:addChild(self.MLOS_ProgressBar)
+
+    self.warningPopup = popup:new(width - 48 - PADDING, PADDING)
+    self.warningPopup:setAnchorLeft(true)
+    self.warningPopup:setAnchorRight(false)
+    self.warningPopup:setAnchorTop(true)
+    self.warningPopup:setAnchorBottom(false)
+    self.warningPopup:ignoreWidthChange()
+    self.warningPopup:ignoreHeightChange()
+    self:addChild(self.warningPopup)
+
     -- ADD NEW FUNCTIONS --
     scrollExt:initialResacale(self.modList, nil, 50, width * 0.5 - PADDING * 2, height - (50 + PADDING + BUTTON_HGT + PADDING))
     scrollExt:modListBoxOverrides(self.modList)
-    scrollExt:addTitle(self.modList, "", true, {r=0.28, g=0.35, b=0.8, a=0.8})
+    scrollExt:addTitle(self.modList, "", true, nil) --{r=0.28, g=0.35, b=0.8, a=0.8}
     scrollExt:addBackground(self.modList, nil, {})
-    scrollExt:addSearchEntry(self.modList, - (PADDING * 1.4 + BUTTON_HGT))
+    scrollExt:addSearchEntry(self.modList, self:getAbsoluteY() + 50 - self.modList:getAbsoluteY() - 3)
     scrollExt:addMoveButtons(self.modList)
-    -- scrollExt:addMultiselectionSupport(self.modList)
+    scrollExt:addMultiselectionSupport(self.modList)
+
+    scrollExt:addContextMenu(self, self.modList.width - PADDING , 50 + 3)
+    scrollExt:addContextMenuOption(self, "Save to file", "Save mods to files", function(slf) print("[MLOS] Saved to file") end)
+    scrollExt:addContextMenuOption(self, "Save to clipboard", "Save mods to clipboard", function(slf) print("[MLOS] Saved to clipboard") end)
+    scrollExt:addContextMenuOption(self, "Open MLOS folder", "Open folder with  Mod Load Order Sorter cache files", function(slf) print("[MLOS] Open MLOS folder") end)
+
+    -- scrollExt:addCollapsableFoldersSupport(self.modList)
+    -- scrollExt:addFolder(self.modList, "unsorted")
+
+
+
 
 
     scrollExt:addItemContextMenu(self.modList,
@@ -145,19 +201,71 @@ function ModLoadOrderPanelOverride:createChildren()
     scrollExt:addItemContextMenu(self.modList,
         "Debug print",
         "Print mod list",
-        function(slf, selectedItems, clickedRawItem)
-            utils:tprint(self.modList.items)
+        function(slf, selectedItems, clickedId,  clickedRawItem)
+            utils:tprint(ModsInfo.data)
+        end
+    )
+    scrollExt:addItemContextMenu(self.modList,
+        "Debug get all mods files ",
+        nil,
+        function(slf, selectedItems, clickedId, clickedRawItem)
+            local loadedLuaCount = getLoadedLuaCount()
+            local p = nil
+            for i = 0, loadedLuaCount-1 do
+                p = getLoadedLua(i)
+                if string.find(p, "/workshop/", 1, true) or string.find(p, "/Workshop/", 1, true) then
+                    print("MCH Loaded Lua:", p)
+                end
+            end
+        end
+    )
+    scrollExt:addItemContextMenu(self.modList,
+        "Debug analyzeFolders",
+        nil,
+        function(slf, selectedItems, clickedId, clickedRawItem)
+            ModsFiles:analyzeFolders(slf.items)
         end
     )
 
-    -- NEW ELEMENTS 
-    local modFilesScroll = ISScrollingListBox:new(width * 0.5 + PADDING, 50, width * 0.5 - PADDING * 3, height - (50 + PADDING + BUTTON_HGT + PADDING))
-    modFilesScroll:initialise()
-    modFilesScroll:instantiate()
-    self:addChild(modFilesScroll)
+    scrollExt:addItemContextMenu(self.modList,
+        "Debug analyzeFolders Background",
+        nil,
+        function(slf, selectedItems, clickedId, clickedRawItem)
+            ModsFiles:startAsyncAnalysis(slf.items, 
+                function(current, total)
+                    -- Обновляем текст в UI:
+                    myProgressBar:setText(string.format("Анализ модов: %d / %d", current, total))
+                    myProgressBar:setProgress(current/total)
+                end,
+                function(finalResult)
+                    print("Анализ завершен без лагов!")
+                    -- Запускаем топологическую сортировку модов
+                end
+            )
+        end
+    )
+    scrollExt:addItemContextMenu(self.modList,
+        "Debug popup",  nil,
+        function(slf, selectedItems, clickedId,  clickedRawItem)
+            local rnd =  ZombRand(0,2)
+            slf.parent.warningPopup:addMessage("O blya", "Something wrong with " .. tostring(selectedItems[1].modId) .." fsdfdaslgfmklosrefmgioasrgnadsfgasdfsgjlkdafsnvlvaiolgmlkasdgidciovvmnaskldfgnmklasdm asdjfnajsdfn asdnf asdkjfnioavb jdnf dgjnasdnf jasnvn nandjasfn suaidjkfasbn ", "debug", rnd == 0 and "CRITICAL" or "WARNING")
+        end
+    )
 
-    scrollExt:addTitle(modFilesScroll, "Fiels", true, {r=0.28, g=0.35, b=0.8, a=0.8})
-    scrollExt:addBackground(modFilesScroll, nil, {})
+
+
+ 
+
+    
+
+    -- -- NEW ELEMENTS 
+    -- local modFilesScroll = ISScrollingListBox:new(width * 0.5 + PADDING, 50, width * 0.5 - PADDING * 3, height - (50 + PADDING + BUTTON_HGT + PADDING))
+    -- modFilesScroll:initialise()
+    -- modFilesScroll:instantiate()
+    -- self:addChild(modFilesScroll)
+
+    -- scrollExt:addTitle(modFilesScroll, "Fiels", true, {r=0.28, g=0.35, b=0.8, a=0.8})
+    -- scrollExt:addBackground(modFilesScroll, nil, {})
 end
 
 
