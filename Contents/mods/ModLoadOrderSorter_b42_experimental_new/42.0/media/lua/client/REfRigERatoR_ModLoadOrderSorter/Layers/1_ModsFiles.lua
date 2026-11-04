@@ -211,9 +211,28 @@ local function parseFileFunctions(modId, filename)
 	local success, reader = pcall(getModFileReader, modId, filename, false)
 	if not success or not reader then return nil end
 
-	local declaredTables = {}
+	local declaredTables = {}   -- real table literals: "X = {"
+	local aliasMap = {}         -- localName -> resolved dotted target ("A.B.C") or "require:<path>"
 	local modifiedFunctions = {}
 	local savedOriginals = {}
+
+	-- resolve an alias chain, including dotted heads:
+	-- local B = A.C; local D = B.E  =>  D resolves to A.C.E
+	local function resolve(name)
+		local seen = {}
+		local cur = name
+		while type(cur) == "string" and not seen[cur] do
+			seen[cur] = true
+			local head, rest = cur:match("^([%w_]+)%.?(.*)$")
+			if head and aliasMap[head] then
+				local resolvedHead = aliasMap[head]
+				cur = (rest ~= "" and rest ~= nil) and (resolvedHead .. "." .. rest) or resolvedHead
+			else
+				break
+			end
+		end
+		return cur
+	end
 
 	local lineNum = 0
 	local line = reader:readLine()
@@ -236,14 +255,28 @@ local function parseFileFunctions(modId, filename)
 					declaredTables[tblName] = true
 				end
 
-				-- hook pattern: local old = Class.method
-				for tblName, funcName in cleanLine:gmatch("local%s+[%w_]+%s*=%s*([%w_]+)%.([%w_]+)") do
-					savedOriginals[tblName .. "." .. funcName] = true
+				-- alias: local X = A.B.C (pure dotted assignment).
+				-- This lets us detect that "function X:m()" and "function A.B.C:m()"
+				-- written via different local names are the SAME target.
+				local localName, rhs = cleanLine:match("^%s*local%s+([%w_]+)%s*=%s*([%w_.]+)%s*$")
+				if localName and rhs and not rhs:find(":derive") then
+					aliasMap[localName] = resolve(rhs)
 				end
 
-				-- pattern B: Class.method = function
+				-- alias to a required module: local X = require("path")
+				local reqName, reqPath = cleanLine:match("^%s*local%s+([%w_]+)%s*=%s*require%s*[%(%s]*[\"']([^\"']+)[\"']")
+				if reqName and reqPath then
+					aliasMap[reqName] = "require:" .. reqPath
+				end
+
+				-- hook pattern: local old = Class.method (resolve aliases too)
+				for tblName, funcName in cleanLine:gmatch("local%s+[%w_]+%s*=%s*([%w_.]+)%.([%w_]+)") do
+					savedOriginals[resolve(tblName) .. "." .. funcName] = true
+				end
+
+				-- pattern B: Class.method = function  (dotted names allowed)
 				if hasFunc then
-					for tblName, funcName in cleanLine:gmatch("([%w_]+)%.([%w_]+)%s*=%s*function") do
+					for tblName, funcName in cleanLine:gmatch("([%w_.]+)%.([%w_]+)%s*=%s*function") do
 						table.insert(modifiedFunctions, {
 							className = tblName,
 							methodName = funcName,
@@ -254,9 +287,9 @@ local function parseFileFunctions(modId, filename)
 				end
 			end
 
-			-- pattern A: function Class:method(...)
+			-- pattern A: function Class:method(...)  (dotted names allowed)
 			if hasFunc and not cleanLine:find("^%s*local%s+function") then
-				for tblName, sep, funcName in cleanLine:gmatch("function%s+([%w_]+)([:.])([%w_]+)%s*%(") do
+				for tblName, sep, funcName in cleanLine:gmatch("function%s+([%w_.]+)([:.])([%w_]+)%s*%(") do
 					table.insert(modifiedFunctions, {
 						className = tblName,
 						methodName = funcName,
@@ -270,6 +303,16 @@ local function parseFileFunctions(modId, filename)
 		line = reader:readLine()
 	end
 	reader:close()
+
+	-- resolve aliases so that the same object referenced via different local
+	-- names produces the same modification target
+	for _, modData in ipairs(modifiedFunctions) do
+		local resolved = resolve(modData.className)
+		if resolved ~= modData.className then
+			modData.alias = modData.className
+			modData.className = resolved
+		end
+	end
 
 	-- keep only modifications of external (not locally declared) tables
 	local externalModifications = {}
@@ -444,6 +487,7 @@ function MLOS_ModsFiles:startAsyncAnalysis(queue, onProgress, onComplete)
 						className = funcInfo.className,
 						methodName = funcInfo.methodName,
 						fullTarget = funcInfo.className .. ":" .. funcInfo.methodName,
+						alias = funcInfo.alias,
 						line = funcInfo.line,
 						isHook = funcInfo.isHook -- true: safe hook, false: full overwrite
 					})
@@ -526,6 +570,7 @@ function MLOS_ModsFiles:analyzeFolders(modsList)
 					className = funcInfo.className,
 					methodName = funcInfo.methodName,
 					fullTarget = funcInfo.className .. ":" .. funcInfo.methodName,
+					alias = funcInfo.alias,
 					line = funcInfo.line,
 					isHook = funcInfo.isHook
 				})
