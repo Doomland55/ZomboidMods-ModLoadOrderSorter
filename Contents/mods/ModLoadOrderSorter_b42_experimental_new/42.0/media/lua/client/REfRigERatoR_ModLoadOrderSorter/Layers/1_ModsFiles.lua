@@ -218,20 +218,30 @@ local function parseFileFunctions(modId, filename)
 
 	-- resolve an alias chain, including dotted heads:
 	-- local B = A.C; local D = B.E  =>  D resolves to A.C.E
+	-- BOUNDED: cyclic aliases (A->B, B->A.C or "local X = X.foo") must never
+	-- cause an infinite loop with ever-growing strings (OOM in the game)
+	local MAX_RESOLVE_STEPS = 8
+	local MAX_RESOLVED_LEN = 256
 	local function resolve(name)
-		local seen = {}
 		local cur = name
-		while type(cur) == "string" and not seen[cur] do
-			seen[cur] = true
+		for _ = 1, MAX_RESOLVE_STEPS do
+			if type(cur) ~= "string" or #cur > MAX_RESOLVED_LEN then break end
 			local head, rest = cur:match("^([%w_]+)%.?(.*)$")
-			if head and aliasMap[head] then
-				local resolvedHead = aliasMap[head]
-				cur = (rest ~= "" and rest ~= nil) and (resolvedHead .. "." .. rest) or resolvedHead
-			else
-				break
-			end
+			if not head or not aliasMap[head] then break end
+			local resolvedHead = aliasMap[head]
+			local newCur = (rest ~= nil and rest ~= "") and (resolvedHead .. "." .. rest) or resolvedHead
+			if newCur == cur or #newCur > MAX_RESOLVED_LEN then break end
+			cur = newCur
 		end
 		return cur
+	end
+
+	-- store an alias only when it does not reference itself (directly or via a chain)
+	local function addAlias(localName, rhs)
+		local resolved = resolve(rhs)
+		if resolved == localName then return end
+		if resolved:sub(1, #localName + 1) == (localName .. ".") then return end
+		aliasMap[localName] = resolved
 	end
 
 	local lineNum = 0
@@ -260,13 +270,13 @@ local function parseFileFunctions(modId, filename)
 				-- written via different local names are the SAME target.
 				local localName, rhs = cleanLine:match("^%s*local%s+([%w_]+)%s*=%s*([%w_.]+)%s*$")
 				if localName and rhs and not rhs:find(":derive") then
-					aliasMap[localName] = resolve(rhs)
+					addAlias(localName, rhs)
 				end
 
 				-- alias to a required module: local X = require("path")
 				local reqName, reqPath = cleanLine:match("^%s*local%s+([%w_]+)%s*=%s*require%s*[%(%s]*[\"']([^\"']+)[\"']")
 				if reqName and reqPath then
-					aliasMap[reqName] = "require:" .. reqPath
+					addAlias(reqName, "require:" .. reqPath)
 				end
 
 				-- hook pattern: local old = Class.method (resolve aliases too)
