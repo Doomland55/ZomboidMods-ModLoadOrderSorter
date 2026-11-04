@@ -15,6 +15,8 @@ require("OptionScreens/ModSelector/ModSelector")
 
 local utils = require('REfRigERatoR_ModLoadOrderSorter/Core/1_Utils')
 local core = require('REfRigERatoR_ModLoadOrderSorter/Core/Core')
+local layersManager = require('REfRigERatoR_ModLoadOrderSorter/Layers/Manager')
+local sortingCore = require('REfRigERatoR_ModLoadOrderSorter/Core/2_SortingCore')
 local scrollExt = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/ScrollExtensions')
 local popup = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/WarningPopup')
 
@@ -103,7 +105,6 @@ end
 -- ================================================
 function ModLoadOrderPanelOverride:render()
     ISPanelJoypad.render(self)
-    ISPanelJoypad.render(self)
     if self.modList.dragItem == nil then return end
 
     local mY = self:getMouseY()
@@ -119,10 +120,48 @@ end
 
 function ModLoadOrderPanelOverride:instantiate()
     origInstantiate(self)
-    print("MLOS_Start")
-    core.layersManager:initialise(self.modList.items)
-    print("MLOS_Finish")
-    -- updateModsCache(self.modList.items)
+    local panel = self
+    print("[MLOS] Layers initialisation STARTED")
+    core.layersManager:initialise(self.modList.items, {
+        onFilesProgress = function(current, total)
+            if panel.MLOS_ProgressBar then
+                panel.MLOS_ProgressBar:setVisible(true)
+                panel.MLOS_ProgressBar:setText(getText("UI_MLOS_Analysis_Progress", current, total))
+                panel.MLOS_ProgressBar:setProgress(total > 0 and (current / total) or 1)
+            end
+        end,
+        onComplete = function()
+            print("[MLOS] Layers initialisation FINISHED")
+            if panel.MLOS_ProgressBar then panel.MLOS_ProgressBar:setVisible(false) end
+            panel:showLayerWarnings()
+        end,
+    })
+end
+
+
+--- Shows aggregated warnings of all layers in the warning popup
+--- (e.g. enabled mods that are not loaded in this Lua session -> reload Lua)
+function ModLoadOrderPanelOverride:showLayerWarnings()
+    if not self.warningPopup then return end
+    local warnings = core.layersManager:getWarnings()
+    for _, w in ipairs(warnings) do
+        self.warningPopup:addMessage(w.title, w.message, w.layer, w.severity)
+    end
+end
+
+
+-- Topological auto sort: builds the dependency graph from all layers,
+-- sorts the mods and applies the new order (with a backup file)
+function ModLoadOrderPanelOverride:autoSort()
+    local sortedIds = sortingCore:sort(self.modList.items)
+    sortingCore:applyOrder(self, sortedIds)
+
+    if self.warningPopup then
+        for _, w in ipairs(sortingCore.warnings) do
+            self.warningPopup:addMessage(w.title, w.message, w.layer, w.severity)
+        end
+    end
+    print("[MLOS] " .. getText("UI_MLOS_SortApplied"))
 end
 
 
@@ -223,25 +262,32 @@ function ModLoadOrderPanelOverride:createChildren()
         "Debug analyzeFolders",
         nil,
         function(slf, selectedItems, clickedId, clickedRawItem)
-            ModsFiles:analyzeFolders(slf.items)
+            local modFiles = core.layers.modFiles
+            if modFiles then utils:tprint(modFiles:analyzeFolders(slf.items)) end
         end
     )
 
     scrollExt:addItemContextMenu(self.modList,
-        "Debug analyzeFolders Background",
+        "Debug re-scan mod files (ignore cache)",
         nil,
         function(slf, selectedItems, clickedId, clickedRawItem)
-            ModsFiles:startAsyncAnalysis(slf.items, 
-                function(current, total)
-                    -- Обновляем текст в UI:
-                    myProgressBar:setText(string.format("Анализ модов: %d / %d", current, total))
-                    myProgressBar:setProgress(current/total)
+            local panel = slf.parent
+            local modFiles = core.layers.modFiles
+            if not modFiles then return end
+            core.layersManager:initialise(slf.items, {
+                reread = true,
+                onFilesProgress = function(current, total)
+                    if panel.MLOS_ProgressBar then
+                        panel.MLOS_ProgressBar:setVisible(true)
+                        panel.MLOS_ProgressBar:setText(getText("UI_MLOS_Analysis_Progress", current, total))
+                        panel.MLOS_ProgressBar:setProgress(total > 0 and (current / total) or 1)
+                    end
                 end,
-                function(finalResult)
-                    print("Анализ завершен без лагов!")
-                    -- Запускаем топологическую сортировку модов
-                end
-            )
+                onComplete = function()
+                    if panel.MLOS_ProgressBar then panel.MLOS_ProgressBar:setVisible(false) end
+                    print("[MLOS] Re-scan finished, cache updated")
+                end,
+            })
         end
     )
     scrollExt:addItemContextMenu(self.modList,

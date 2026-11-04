@@ -95,17 +95,20 @@ function MLOS_CORE:initCategoryConfig()
 		self:saveTxtFile(filePath, saveData, dataToTxt)
 	else
 		local rawData = self:readTxtFile(filePath, function(addTo, line) return self:getDataFromString(line, addTo) end )
-		
+
 		-- Extract category order from [MLOS_CORE] section
 		if rawData and rawData.MLOS_CORE and rawData.MLOS_CORE.categories then
 			MLOS_CORE.rawCategoryOrder = rawData.MLOS_CORE.categories
 		end
-		for i, v in ipairs(MLOS_CORE.rawCategoryOrder) do MLOS_CORE.categoryOrder[v] = i end
 
 		-- Extract category configs
 		rawData.MLOS_CORE = nil
 		MLOS_CORE.categoryConfig = rawData
 	end
+
+	-- always (re)build the category -> index map
+	MLOS_CORE.categoryOrder = {}
+	for i, v in ipairs(MLOS_CORE.rawCategoryOrder) do MLOS_CORE.categoryOrder[v] = i end
 end
 
 
