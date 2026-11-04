@@ -32,5 +32,7 @@
     "UI_MLOS_Incompatible_Msg": "%1 is incompatible with %2",
     "UI_MLOS_MissingDep_Title": "Missing dependencies",
     "UI_MLOS_MissingDep_Msg": "%1 requires missing mod(s): %2",
-    "UI_MLOS_SortApplied": "New load order applied (previous order backed up to loadOrderBackup.txt)"
+    "UI_MLOS_SortApplied": "New load order applied (previous order backed up to loadOrderBackup.txt)",
+    "UI_MLOS_ClickToCopy": "click to copy",
+    "UI_MLOS_CopiedToClipboard": "Copied to clipboard!"
 }

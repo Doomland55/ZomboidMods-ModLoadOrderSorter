@@ -122,7 +122,9 @@ function MLOS_SortingCore:buildGraph(modsList)
 		if enabled[modId] then
 			for _, f in ipairs(fdata.files or {}) do
 				fileOwners[f] = fileOwners[f] or {}
-				table.insert(fileOwners[f], modId)
+				if not utils:contains(fileOwners[f], modId) then
+					table.insert(fileOwners[f], modId)
+				end
 			end
 		end
 	end
@@ -136,23 +138,30 @@ function MLOS_SortingCore:buildGraph(modsList)
 	end
 
 	-- 3. function modifications: a full overwrite must load before any hook of
-	--    the same target (otherwise the overwrite erases the hook)
-	local targetOwners = {} -- fullTarget -> { {mod, isHook}, ... }
+	--    the same target (otherwise the overwrite erases the hook).
+	--    One entry per mod per target: a mod overwriting its own target in
+	--    several files is NOT a conflict (intra-mod analysis is skipped).
+	local targetOwners = {} -- fullTarget -> { [modId] = isHook }
 	for modId, fdata in pairs(modFiles) do
 		if enabled[modId] and fdata.complete ~= false then
 			for _, m in ipairs(fdata.modifications or {}) do
 				local key = m.fullTarget or ((m.className or "?") .. ":" .. (m.methodName or "?"))
 				targetOwners[key] = targetOwners[key] or {}
-				table.insert(targetOwners[key], { mod = modId, isHook = (m.isHook == true) })
+				if targetOwners[key][modId] == nil then
+					targetOwners[key][modId] = (m.isHook == true)
+				elseif m.isHook ~= true then
+					targetOwners[key][modId] = false -- hard overwrite dominates over a hook
+				end
 			end
 		end
 	end
 	for target, owners in pairs(targetOwners) do
-		if #owners > 1 then
-			local overwrites, hooks = {}, {}
-			for _, o in ipairs(owners) do
-				if o.isHook then table.insert(hooks, o.mod) else table.insert(overwrites, o.mod) end
-			end
+		local overwrites, hooks = {}, {}
+		for mod, isHook in pairs(owners) do
+			if isHook then table.insert(hooks, mod) else table.insert(overwrites, mod) end
+		end
+		local ownerCount = #overwrites + #hooks
+		if ownerCount > 1 then
 
 			if #overwrites > 1 then
 				-- several mods fully overwrite the same function. When two of them

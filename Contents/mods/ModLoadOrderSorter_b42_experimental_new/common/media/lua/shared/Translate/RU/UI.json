@@ -32,5 +32,7 @@
     "UI_MLOS_Incompatible_Msg": "%1 несовместим с %2",
     "UI_MLOS_MissingDep_Title": "Отсутствуют зависимости",
     "UI_MLOS_MissingDep_Msg": "%1 требует отсутствующий мод(ы): %2",
-    "UI_MLOS_SortApplied": "Новый порядок загрузки применён (прежний порядок сохранён в loadOrderBackup.txt)"
+    "UI_MLOS_SortApplied": "Новый порядок загрузки применён (прежний порядок сохранён в loadOrderBackup.txt)",
+    "UI_MLOS_ClickToCopy": "клик — копировать",
+    "UI_MLOS_CopiedToClipboard": "Скопировано в буфер обмена!"
 }
