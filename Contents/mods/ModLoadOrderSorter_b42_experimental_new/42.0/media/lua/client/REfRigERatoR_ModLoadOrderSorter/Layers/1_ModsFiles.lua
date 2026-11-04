@@ -150,7 +150,8 @@ local function cacheDataToText(modId, data)
 			m.file or "",
 			m.fullTarget or ((m.className or "") .. ":" .. (m.methodName or "")),
 			tostring(m.line or 0),
-			tostring(m.isHook == true)
+			tostring(m.isHook == true),
+			m.alias or ""
 		}, "|"))
 	end
 	return "[" .. modId .. "]\r\n" .. table.concat(lines, "\r\n")
@@ -168,12 +169,17 @@ local function cacheLineToData(addTo, line)
 	elseif key == "files" then
 		addTo.files = utils:splitStringBySeparator(value)
 	elseif key == "mod" then
-		local file, target, lineNum, isHook = value:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)$")
+		-- file|fullTarget|line|isHook[|alias] - alias field is optional (old caches)
+		local file, target, lineNum, isHook, alias = value:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|?(.*)$")
 		if file then
+			local className, methodName = target:match("^(.-):([^:]+)$")
 			addTo.modifications = addTo.modifications or {}
 			table.insert(addTo.modifications, {
 				file = file,
 				fullTarget = target,
+				className = className,
+				methodName = methodName,
+				alias = (alias ~= nil and alias ~= "") and alias or nil,
 				line = tonumber(lineNum),
 				isHook = (isHook == "true")
 			})

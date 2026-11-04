@@ -312,7 +312,11 @@ function MLOS_SortingCore:sort(modsList)
 			severity = hasHard and "CRITICAL" or "WARNING",
 			layer = "SortingRules",
 			title = getText("UI_MLOS_Cycle_Title"),
-			message = getText("UI_MLOS_Cycle_Msg", table.concat(involved, ", "))
+			-- when only soft order-hints were dropped, say so explicitly -
+			-- there is no real dependency cycle, just conflicting order hints
+			message = hasHard
+				and getText("UI_MLOS_Cycle_Msg", table.concat(involved, ", "))
+				or getText("UI_MLOS_OrderHintBroken_Msg", table.concat(involved, ", "))
 		})
 	end
 
