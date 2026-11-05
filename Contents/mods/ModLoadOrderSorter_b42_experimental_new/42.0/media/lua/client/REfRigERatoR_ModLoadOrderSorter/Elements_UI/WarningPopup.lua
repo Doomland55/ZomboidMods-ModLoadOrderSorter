@@ -83,6 +83,19 @@ function ModSortWarningPopup:createChildren()
     self.listBox:setVisible(false)
     self:addChild(self.listBox)
 
+    -- click on a warning copies its full text to the clipboard
+    local origListBoxOnMouseUp = ISScrollingListBox.onMouseUp
+    self.copiedFlash = 0
+    self.listBox.onMouseUp = function(listBox, x, y)
+        if origListBoxOnMouseUp then origListBoxOnMouseUp(listBox, x, y) end
+        local row = listBox:rowAt(x, y)
+        local item = row and listBox.items[row]
+        if item and item.item and item.item.copyText and item.item.copyText ~= "" then
+            Clipboard.setClipboard(item.item.copyText)
+            self.copiedFlash = 90 -- show "copied" feedback in the header for ~90 frames
+        end
+    end
+
     self.tooltipUI = ISToolTip:new()
     self.tooltipUI:setOwner(self)
     self.tooltipUI:setVisible(false)
@@ -114,7 +127,8 @@ function ModSortWarningPopup:addMessage(title, message, layerName, severity)
         barColor = isCrit and COLOR_CRITICAL or COLOR_WARNING,
         isLong = isLong,
         tooltipName = isLong and fullTitle or nil,
-        tooltipDesc = isLong and (colorTag .. message) or nil
+        tooltipDesc = isLong and (colorTag .. message) or nil,
+        copyText = fullTitle .. "\n" .. message -- full text copied to clipboard on click
     }
     
     table.insert(self.warnings, warningData)
@@ -158,6 +172,13 @@ function ModSortWarningPopup:drawWarningItem(y, item, alt)
 
     self:drawText(data.displayTitle, 14, y + 5, c.r, c.g, c.b, 1.0, UIFont.Small)
     self:drawText(data.displayMessage, 14, y + 24, 0.9, 0.9, 0.9, 1.0, UIFont.Small)
+
+    -- hint: click to copy
+    if self.mouseoverselected == item.index then
+        local hint = getText("UI_MLOS_ClickToCopy")
+        local hintW = getTextManager():MeasureStringX(UIFont.Small, hint)
+        self:drawText(hint, width - hintW - 8, y + 5, 0.55, 0.85, 0.55, 1.0, UIFont.Small)
+    end
 
     return y + item.height
 end

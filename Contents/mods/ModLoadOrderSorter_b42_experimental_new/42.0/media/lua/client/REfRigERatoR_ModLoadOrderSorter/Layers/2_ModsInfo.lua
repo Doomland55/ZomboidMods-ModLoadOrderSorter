@@ -6,39 +6,91 @@ local MLOS_ModsInfo = {}
 MLOS_ModsInfo.data = {} -- data from modInfo. data[modId] = {name, desc, category, requirements, loadAfter, ...}
 
 
-function MLOS_ModsInfo:getData(modsList, reread)
+--- Numeric priority of a mod: based on its category order, modified by
+--- preorder list, loadFirst/loadLast flags (from mod.info or sorting rules).
+---@param mod table extra mod info (with .sortingRules merged in)
+---@return number
+local function getPriority(mod)
+	local catCount = #core.rawCategoryOrder * 10
+	local sr = mod.sortingRules or {}
+	local effectiveCategory = sr.category or mod.category or "undefined"
+	if core.categoryOrder[effectiveCategory] == nil then effectiveCategory = "undefined" end
+    local priority = (catCount - (core.categoryOrder[effectiveCategory] - 1) * 10) -- range: 0 ... catCount
+
+	-- hardcoded preorder (this mod and Mod Manager must stay on top)
+	if core.preorder[mod.id] ~= nil then priority = priority + catCount + 1000 + core.preorder[mod.id] end
+    if (sr.loadFirst or mod.loadFirst)  == "on" then priority = priority + catCount + 100 end
+	if (sr.loadLast or mod.loadLast) == "on" then priority = priority - catCount - 100 end
+	if (sr.loadFirst or mod.loadFirst) == "category" then priority = priority + 1 end
+    if (sr.loadLast or mod.loadLast) == "category" then priority = priority - 1 end
+    return priority
+end
+
+
+--- Builds/refreshes per-mod info for all enabled mods.
+---@param modsList table modList.items of the load order panel
+---@param sortingRules table|nil rules data from the SortingRules layer (rules[modId])
+---@param reread boolean|nil force rebuild of cached info
+---@return table current order (array of modIds)
+function MLOS_ModsInfo:getData(modsList, sortingRules, reread)
+	if not modsList then return {} end
+	sortingRules = sortingRules or {}
+
 	local curentOrder = {}
+	local enabled = {}
 
 	for _, val in ipairs(modsList) do
 		local modId = val.item.modId
-		local extraModInfo = self.data[modId] or self:getExtraModInfo(val)
+		enabled[modId] = true
+		local extraModInfo = (reread ~= true and self.data[modId]) or self:getExtraModInfo(val)
 
-		-- recalculate cache 
-		extraModInfo.warnings = {}
-		extraModInfo.fixedLoadAfter = {}
+		-- recalculate dynamic fields
+		extraModInfo.sortingRules = sortingRules[modId] or {}
+		extraModInfo.warnings = { missing = {}, incompatible = {}, wrongOrder = {}, rules = {} }
+		extraModInfo.fixedLoadAfter = extraModInfo.fixedLoadAfter or {}
 
-		if not utils:contains(core.rawCategoryOrder, extraModInfo.category) then
-			pcall(function() error("\n[ERROR] --> [MLOS] Mod: [" .. extraModInfo.name .. "] have unknown category: " .. extraModInfo.category .. "\n") end )
+		if extraModInfo.category == nil or not utils:contains(core.rawCategoryOrder, extraModInfo.category) then
+			pcall(function() error("\n[ERROR] --> [MLOS] Mod: [" .. tostring(extraModInfo.name) .. "] have unknown category: " .. tostring(extraModInfo.category) .. "\n") end )
 		end
 
-		-- extraModInfo.priority = getPriority(extraModInfo)
-
 		self.data[modId] = extraModInfo
-
 		table.insert(curentOrder, modId)
 	end
 
-	-- for curmod, modinfo in pairs(self.data) do
-	-- 	local loadbefore = utils:MergeTablesDedup({}, modinfo.loadBefore, modinfo.sortingRules.loadBefore)
-	-- 	if loadbefore ~= nil then
-	-- 		for _, val in ipairs(loadbefore) do
-	-- 			local valModInfo = self.data[val]
-	-- 			if val ~= nil and valModInfo ~= nil then
-	-- 				utils:MergeTablesDedup(valModInfo.fixedLoadAfter, { curmod })
-	-- 			end
-	-- 		end
-	-- 	end
-	-- end
+	-- fixedLoadAfter: inverse of loadBefore (from mod.info + sorting rules)
+	for curmod, modinfo in pairs(self.data) do
+		if enabled[curmod] then
+			local loadBefore = utils:MergeTablesDedup({}, modinfo.loadBefore, modinfo.sortingRules.loadBefore)
+			for _, target in ipairs(loadBefore or {}) do
+				local targetInfo = self.data[target]
+				if target ~= nil and targetInfo ~= nil and enabled[target] then
+					targetInfo.fixedLoadAfter = utils:MergeTablesDedup(targetInfo.fixedLoadAfter or {}, { curmod })
+				end
+			end
+		end
+	end
+
+	-- priorities and warnings
+	for modId, modinfo in pairs(self.data) do
+		if enabled[modId] then
+			modinfo.priority = getPriority(modinfo)
+
+			for _, req in ipairs(modinfo.requirements or {}) do
+				if not enabled[req] then
+					table.insert(modinfo.warnings.missing, req)
+				end
+			end
+
+			local incompatible = utils:MergeTablesDedup({}, modinfo.incompatibleMods, modinfo.sortingRules.incompatibleMods)
+			for _, other in ipairs(incompatible or {}) do
+				if enabled[other] then
+					table.insert(modinfo.warnings.incompatible, other)
+				end
+			end
+		end
+	end
+
+	return curentOrder
 end
 
 
@@ -56,21 +108,6 @@ local function readModInfoFile(modId)
 	file:close()
 
 	return result
-end
-
-
-local function getPriority(mod)
-	local catCount = #core.rawCategoryOrder * 10
-	local effectiveCategory = mod.sortingRules.category or mod.category or "undefined"
-    local priority = (catCount - (core.categoryOrder[effectiveCategory] - 1) * 10) -- range: 0 ... catCount
-
-	-- Правила сортировки
-	if core.preorder[mod.id] ~= nil then priority = priority + catCount + 1000 + core.preorder[mod.id] end
-    if (mod.sortingRules.loadFirst or mod.loadFirst)  == "on" then priority = priority + catCount + 100 end
-	if (mod.sortingRules.loadLast or mod.loadLast) == "on" then priority = priority - catCount - 100 end
-	if (mod.sortingRules.loadFirst or mod.loadFirst) == "category" then priority = priority + 1 end
-    if (mod.sortingRules.loadLast or mod.loadLast) == "category"then priority = priority - 1 end
-    return priority
 end
 
 

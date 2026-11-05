@@ -20,5 +20,20 @@
     "UI_MLOS_SortingRules_Category": "Category",
     "UI_MLOS_FromClientBtn_Tooltip": "Use current active client mods",
     "UI_MLOS_SaveToClipboard_Tooltip": "Copy to clipboard <LINE><RGB:0.8,0.8,0.8>List of Mods and WorkshopItems will be copied to clipboard",
-    "UI_MLOS_SaveToFile_Tooltip": "Save to file <LINE><RGB:0.8,0.8,0.8>List of Mods and WorkshopItems will be saved to '%1' file in 'Lua' folder"
+    "UI_MLOS_SaveToFile_Tooltip": "Save to file <LINE><RGB:0.8,0.8,0.8>List of Mods and WorkshopItems will be saved to '%1' file in 'Lua' folder",
+    "UI_MLOS_Warning_NotLoaded_Title": "Some enabled mods are not loaded yet",
+    "UI_MLOS_Warning_NotLoaded_Msg": "Mods: %1. Their lua files are not loaded in this session, so file analysis for them is incomplete. Reload lua (restart the game) and reopen this screen to get full data.",
+    "UI_MLOS_Analysis_Progress": "Analyzing mod files: %1 / %2",
+    "UI_MLOS_Cycle_Title": "Dependency cycle detected",
+    "UI_MLOS_Cycle_Msg": "These mods could not be fully sorted because of circular dependencies: %1. They were placed by priority, check their requirements.",
+    "UI_MLOS_Conflict_Overwrite_Title": "Conflicting function overwrites",
+    "UI_MLOS_Conflict_Overwrite_Msg": "Mods %1 both fully overwrite %2. Only the last one in the load order will take effect.",
+    "UI_MLOS_Incompatible_Title": "Incompatible mods",
+    "UI_MLOS_Incompatible_Msg": "%1 is incompatible with %2",
+    "UI_MLOS_MissingDep_Title": "Missing dependencies",
+    "UI_MLOS_MissingDep_Msg": "%1 requires missing mod(s): %2",
+    "UI_MLOS_SortApplied": "New load order applied (previous order backed up to loadOrderBackup.txt)",
+    "UI_MLOS_ClickToCopy": "click to copy",
+    "UI_MLOS_CopiedToClipboard": "Copied to clipboard!",
+    "UI_MLOS_OrderHintBroken_Msg": "Order hints (shared files / function hooks) between these mods conflicted with real dependencies and were ignored: %1. The dependencies themselves are satisfied."
 }
