@@ -47,7 +47,8 @@ function MLOS_ModsInfo:getData(modsList, sortingRules, reread)
 		-- recalculate dynamic fields
 		extraModInfo.sortingRules = sortingRules[modId] or {}
 		extraModInfo.warnings = { missing = {}, incompatible = {}, wrongOrder = {}, rules = {} }
-		extraModInfo.fixedLoadAfter = extraModInfo.fixedLoadAfter or {}
+		extraModInfo.fixedLoadAfter = {}
+		extraModInfo.requiredBy = {}
 
 		if extraModInfo.category == nil or not utils:contains(core.rawCategoryOrder, extraModInfo.category) then
 			pcall(function() error("\n[ERROR] --> [MLOS] Mod: [" .. tostring(extraModInfo.name) .. "] have unknown category: " .. tostring(extraModInfo.category) .. "\n") end )
@@ -56,6 +57,14 @@ function MLOS_ModsInfo:getData(modsList, sortingRules, reread)
 		self.data[modId] = extraModInfo
 		table.insert(curentOrder, modId)
 	end
+
+	-- Build reverse requirements only for enabled mods.
+    for id in pairs(enabled) do
+        local info = self.data[id]
+        for _, dep in ipairs(info.requirements or {}) do
+            if enabled[dep] then table.insert(self.data[dep].requiredBy, id) end
+        end
+    end
 
 	-- fixedLoadAfter: inverse of loadBefore (from mod.info + sorting rules)
 	for curmod, modinfo in pairs(self.data) do
@@ -256,6 +265,8 @@ function MLOS_ModsInfo:getExtraModInfo(modObject)
 	local modinfoFileData = readModInfoFile(extraModInfo.id)
 	modinfoFileData.id = nil
 	modinfoFileData.name = nil
+	modinfoFileData.requirements = modinfoFileData.require
+	modinfoFileData.require = nil
 	extraModInfo = utils:MergeTablesDedup(extraModInfo, modinfoFileData)
 
 	-- extraModInfo = utils:MergeTablesDedup(extraModInfo, readModInfoFile(extraModInfo.id))

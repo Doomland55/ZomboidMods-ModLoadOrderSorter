@@ -103,7 +103,7 @@ function core.layersManager:dumpDebugData(modsList)
 	local sorter = require('REfRigERatoR_ModLoadOrderSorter/Core/2_SortingCore')
 	local parts = {}
 	local dateStr = ""
-	pcall(function() dateStr = tostring(os.date("%Y-%m-%d %H:%M:%S")) end)
+	-- os is unavailable in Kahlua.
 	table.insert(parts, "=== MLOS DEBUG DUMP " .. dateStr .. " ===")
 	table.insert(parts, "MOD_VERSION=" .. tostring(core.MOD_VERSION))
 
@@ -194,7 +194,7 @@ function core.layersManager:initialise(modsList, callbacks)
 	--    below (modInfo / sortingRules) via core.layers, e.g. to tell apart
 	--    intentional overwrites (explicit dependencies) from real conflicts.
 	--    Cache read is synchronous, stale mods are analysed async with progress
-	layers.modFiles:getData(modsList, {
+	layers.modFiles:queryAndGetData(modsList, {
 		reread = callbacks.reread,
 		onProgress = callbacks.onFilesProgress,
 		onComplete = function(_data)

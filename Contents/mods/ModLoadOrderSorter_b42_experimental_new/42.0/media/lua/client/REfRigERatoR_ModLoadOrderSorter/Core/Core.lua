@@ -97,11 +97,11 @@ function MLOS_CORE:initCategoryConfig()
 		local rawData = self:readTxtFile(filePath, function(addTo, line) return self:getDataFromString(line, addTo) end )
 
 		-- Extract category order from [MLOS_CORE] section
-		if rawData and rawData.MLOS_CORE and rawData.MLOS_CORE.categories then
-			MLOS_CORE.rawCategoryOrder = rawData.MLOS_CORE.categories
-		end
+        -- Load categories are intentionally fixed; config customises tag mappings only.
+        MLOS_CORE.rawCategoryOrder = defaultCategoryOrder
 
 		-- Extract category configs
+        rawData = rawData or {}
 		rawData.MLOS_CORE = nil
 		MLOS_CORE.categoryConfig = rawData
 	end
@@ -190,6 +190,7 @@ function MLOS_CORE:saveTxtFile(filePath, saveData, dataToTxtFunc, sortData)
 	if not filePath or not saveData or not dataToTxtFunc then return end
 
 	local file = getFileWriter(filePath, true, false)
+    if not file then return false end
 	local sectionNames = {}
 	for section, _ in pairs(saveData) do
 		table.insert(sectionNames, section)
@@ -203,6 +204,7 @@ function MLOS_CORE:saveTxtFile(filePath, saveData, dataToTxtFunc, sortData)
 		if text~=nil then file:write(text .."\n") end
 	end
 	file:close()
+    return true
 end
 
 

@@ -78,11 +78,11 @@ end
 --- Edge A -> B means "A must be loaded before B".
 ---@param modsList table modList.items
 ---@return table edges, table enabled, table orderIndex
-function MLOS_SortingCore:buildGraph(modsList)
+function MLOS_SortingCore:buildGraph(modsList, activeRules)
 	local layers = core.layers
 	local modInfo = (layers.modInfo and layers.modInfo.data) or {}
 	local modFiles = (layers.modFiles and layers.modFiles.data) or {}
-	local rules = (layers.sortingRules and layers.sortingRules.data) or {}
+	local rules = activeRules or (layers.sortingRules and layers.sortingRules.data) or {}
 
 	local enabled = {}
 	local orderIndex = {}
@@ -98,7 +98,7 @@ function MLOS_SortingCore:buildGraph(modsList)
 	-- 1. hard dependencies from ModsInfo (+ sorting rules merged into it)
 	for modId, info in pairs(modInfo) do
 		if enabled[modId] then
-			local sr = info.sortingRules or rules[modId] or {}
+			local sr = rules[modId] or {}
 			local function need(dep, w)
 				if dep and dep ~= modId and enabled[dep] then addEdge(edges, dep, modId, w) end
 			end
@@ -108,7 +108,7 @@ function MLOS_SortingCore:buildGraph(modsList)
 
 			for _, dep in ipairs(info.requirements or {}) do need(dep, W_REQUIRE) end
 			for _, dep in ipairs(info.loadAfter or {}) do need(dep, W_LOAD) end
-			for _, dep in ipairs(info.fixedLoadAfter or {}) do need(dep, W_LOAD) end
+			-- loadBefore edges are built directly; fixedLoadAfter may refer to old rules.
 			for _, dep in ipairs(info.loadBefore or {}) do before(dep, W_LOAD) end
 			for _, dep in ipairs(sr.loadAfter or {}) do need(dep, W_RULES) end
 			for _, dep in ipairs(sr.loadBefore or {}) do before(dep, W_RULES) end
@@ -145,7 +145,7 @@ function MLOS_SortingCore:buildGraph(modsList)
 	for modId, fdata in pairs(modFiles) do
 		if enabled[modId] and fdata.complete ~= false then
 			for _, m in ipairs(fdata.modifications or {}) do
-				local key = m.fullTarget or ((m.className or "?") .. ":" .. (m.methodName or "?"))
+				local key = ((m.className or "?") .. "." .. (m.methodName or "?"))
 				targetOwners[key] = targetOwners[key] or {}
 				if targetOwners[key][modId] == nil then
 					targetOwners[key][modId] = (m.isHook == true)
@@ -215,7 +215,7 @@ function MLOS_SortingCore:buildGraph(modsList)
 	for id in pairs(enabled) do
 		enabledCount = enabledCount + 1
 		local info = modInfo[id]
-		local cat = (info and info.category) or "undefined"
+		local cat = (rules[id] or {}).category or (info and info.category) or (modFiles[id] and modFiles[id].category) or "undefined"
 		catIndex[id] = core.categoryOrder[cat] or catCount
 		if info then info.effectiveCategory = core.rawCategoryOrder[catIndex[id]] end
 	end
@@ -235,6 +235,13 @@ function MLOS_SortingCore:buildGraph(modsList)
 		end
 		if not changed then break end
 	end
+    -- Heuristic edges must not force a later category ahead of an earlier one.
+    for from, list in pairs(edges) do
+        for i = #list, 1, -1 do
+            local e = list[i]
+            if e.weight < W_RULES and catIndex[from] > catIndex[e.to] then table.remove(list, i) end
+        end
+    end
 
 	return edges, enabled, orderIndex, catIndex
 end
@@ -249,8 +256,8 @@ end
 --- possible. Broken edges are reported as a warning.
 ---@param modsList table modList.items
 ---@return table sorted array of modIds
-function MLOS_SortingCore:sort(modsList)
-	local edges, enabled, orderIndex, catIndex = self:buildGraph(modsList)
+function MLOS_SortingCore:sort(modsList, activeRules)
+	local edges, enabled, orderIndex, catIndex = self:buildGraph(modsList, activeRules)
 	self.lastEdges = edges
 	self.brokenEdges = {}
 	local modInfo = (core.layers.modInfo and core.layers.modInfo.data) or {}
@@ -273,24 +280,25 @@ function MLOS_SortingCore:sort(modsList)
 	-- category index (overridden during graph building so a required mod is
 	-- never in a later category than the mod that requires it); all other
 	-- modifiers of the declared priority (preorder, loadFirst/loadLast) are kept
-	local function effPriority(id)
-		local info = modInfo[id]
-		if not info then return 0 end
-		local declaredIdx = core.categoryOrder[info.category] or catCount
-		local declaredPart = catCount * 10 - (declaredIdx - 1) * 10
-		local adj = (info.priority or declaredPart) - declaredPart
-		return (catCount * 10 - ((catIndex[id] or catCount) - 1) * 10) + adj
-	end
-
-	-- sort by effective category/priority first; on equal priority sort by mod
-	-- id (name), so the result is deterministic and does not depend on the
-	-- previous order
-	local function better(a, b)
-		local pa = effPriority(a)
-		local pb = effPriority(b)
-		if pa ~= pb then return pa > pb end
-		return tostring(a):lower() < tostring(b):lower()
-	end
+	local rules = activeRules or (core.layers.sortingRules and core.layers.sortingRules.data) or {}
+    local function rank(id)
+        local rule = rules[id] or {}
+        if rule.loadFirst == "on" then return 0, 0, 0 end
+        if rule.loadLast == "on" then return 2, 0, 0 end
+        local position = rule.loadFirst == "category" and -1 or (rule.loadLast == "category" and 1 or 0)
+        return 1, catIndex[id] or catCount, position
+    end
+    local function better(a, b)
+        local ag, ac, ap = rank(a)
+        local bg, bc, bp = rank(b)
+        if ag ~= bg then return ag < bg end
+        if ac ~= bc then return ac < bc end
+        if ap ~= bp then return ap < bp end
+        local an = tostring((modInfo[a] or {}).name or a):lower()
+        local bn = tostring((modInfo[b] or {}).name or b):lower()
+        if an ~= bn then return an < bn end
+        return tostring(a) < tostring(b)
+    end
 
 	local sorted = {}
 	local placed = {}
@@ -323,12 +331,23 @@ function MLOS_SortingCore:sort(modsList)
 		end
 		if remaining == 0 then break end
 
+        -- Only remove an edge that actually participates in a cycle, not an
+        -- unrelated low-priority edge downstream from one.
+        local function reaches(start, target, seen)
+            if start == target then return true end
+            if seen[start] or placed[start] then return false end
+            seen[start] = true
+            for _, edge in ipairs(edges[start] or {}) do
+                if reaches(edge.to, target, seen) then return true end
+            end
+            return false
+        end
 		local weakest = nil -- { list=..., idx=..., from=..., to=..., weight=... }
 		for from, list in pairs(edges) do
 			if not placed[from] then
 				for i, e in ipairs(list) do
-					if not placed[e.to] then
-						if weakest == nil or e.weight < weakest.weight then
+					if not placed[e.to] and reaches(e.to, from, {}) then
+						if weakest == nil or e.weight < weakest.weight or (e.weight == weakest.weight and (from .. "\0" .. e.to) < (weakest.from .. "\0" .. weakest.to)) then
 							weakest = { list = list, idx = i, from = from, to = e.to, weight = e.weight }
 						end
 					end
@@ -360,11 +379,31 @@ function MLOS_SortingCore:sort(modsList)
 			title = getText("UI_MLOS_Cycle_Title"),
 			-- when only soft order-hints were dropped, say so explicitly -
 			-- there is no real dependency cycle, just conflicting order hints
-			message = hasHard
-				and getText("UI_MLOS_Cycle_Msg", table.concat(involved, ", "))
-				or getText("UI_MLOS_OrderHintBroken_Msg", table.concat(involved, ", "))
+            message = (hasHard and getText("UI_MLOS_Cycle_Msg", table.concat(involved, ", "))
+                or getText("UI_MLOS_OrderHintBroken_Msg", table.concat(involved, ", ")))
+                .. " | " .. (function()
+                    local details = {}
+                    for _, e in ipairs(self.brokenEdges) do details[#details+1] = e.from .. " -> " .. e.to .. " (" .. e.weight .. ")" end
+                    return table.concat(details, "; ")
+                end)()
 		})
 	end
+
+    local reported = {}
+    for id in pairs(enabled) do
+        local data, rule = modInfo[id] or {}, rules[id] or {}
+        for _, list in ipairs({data.incompatibleMods or {}, rule.incompatibleMods or {}}) do
+            for _, other in ipairs(list) do
+                if enabled[other] and id ~= other then
+                    local key = id < other and id .. " / " .. other or other .. " / " .. id
+                    if not reported[key] then
+                        reported[key] = true
+                        table.insert(self.warnings, {severity = "CRITICAL", layer = "ModsInfo", title = "Incompatible mods", message = key})
+                    end
+                end
+            end
+        end
+    end
 
 	return sorted
 end
@@ -374,35 +413,54 @@ end
 --- incompatible mods, deps placed below). Returns true when the order is valid.
 ---@param modsList table modList.items
 ---@return boolean
-function MLOS_SortingCore:validate(modsList)
-	local modInfo = (core.layers.modInfo and core.layers.modInfo.data) or {}
-	local enabled = {}
-	local orderIndex = {}
-	for i, val in ipairs(modsList) do
-		local id = val.item.modId
-		enabled[id] = true
-		orderIndex[id] = i
-	end
-
-	local isCorrect = true
-	for i, val in ipairs(modsList) do
-		local modId = val.item.modId
-		local info = modInfo[modId]
-		if info then
-			info.warnings = info.warnings or {}
-			info.warnings.wrongOrder = info.warnings.wrongOrder or {}
-			local deps = utils:MergeTablesDedup({},
-				info.requirements, info.loadAfter, info.fixedLoadAfter,
-				(info.sortingRules or {}).loadAfter)
-			for _, dep in ipairs(deps or {}) do
-				if enabled[dep] and (orderIndex[dep] or 1e9) > i then
-					isCorrect = false
-					table.insert(info.warnings.wrongOrder, dep)
-				end
-			end
-		end
-	end
-	return isCorrect
+function MLOS_SortingCore:validate(modsList, activeRules)
+    local info = (core.layers.modInfo and core.layers.modInfo.data) or {}
+    local rules = activeRules or (core.layers.sortingRules and core.layers.sortingRules.data) or {}
+    local _, enabled, index, cats = self:buildGraph(modsList, rules)
+    local status = {}
+    local severity = { yellow = 1, red = 2, purple = 3 }
+    local function mark(id, color)
+        if not status[id] or severity[color] > severity[status[id]] then status[id] = color end
+    end
+    for id in pairs(enabled) do
+        local data, rule = info[id] or {}, rules[id] or {}
+        for _, dep in ipairs(data.requirements or {}) do
+            if not enabled[dep] or index[dep] > index[id] then mark(id, "red") end
+        end
+        for _, list in ipairs({data.incompatibleMods or {}, rule.incompatibleMods or {}}) do
+            for _, other in ipairs(list) do
+                if enabled[other] then mark(id, "purple"); mark(other, "purple") end
+            end
+        end
+        for _, list in ipairs({data.loadAfter or {}, rule.loadAfter or {}}) do
+            for _, other in ipairs(list) do
+                if enabled[other] and index[other] > index[id] then mark(id, "yellow") end
+            end
+        end
+        for _, list in ipairs({data.loadBefore or {}, rule.loadBefore or {}}) do
+            for _, other in ipairs(list) do
+                if enabled[other] and index[other] < index[id] then mark(id, "yellow") end
+            end
+        end
+    end
+    local function rank(id)
+        local rule = rules[id] or {}
+        if rule.loadFirst == "on" then return 0, 0, 0 end
+        if rule.loadLast == "on" then return 2, 0, 0 end
+        return 1, cats[id], rule.loadFirst == "category" and -1 or (rule.loadLast == "category" and 1 or 0)
+    end
+    for i = 1, #modsList do
+        local a = modsList[i].item.modId
+        local ag, ac, ap = rank(a)
+        for j = i + 1, #modsList do
+            local b = modsList[j].item.modId
+            local bg, bc, bp = rank(b)
+            if ag > bg or (ag == bg and (ac > bc or (ac == bc and ap > bp))) then
+                mark(a, "yellow"); mark(b, "yellow")
+            end
+        end
+    end
+    return status
 end
 
 

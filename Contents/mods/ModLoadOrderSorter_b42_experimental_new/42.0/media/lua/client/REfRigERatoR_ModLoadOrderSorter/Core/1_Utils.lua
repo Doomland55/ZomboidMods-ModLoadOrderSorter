@@ -424,4 +424,23 @@ function Refr_Utils:doesModHaveFile(files, filename_pattern)
 end
 
 
+-- Copies tables without sharing nested lists between saved and working rules.
+function Refr_Utils:deepCopy(value, seen)
+    if type(value) ~= "table" then return value end
+    seen = seen or {}
+    if seen[value] then return seen[value] end
+    local result = {}
+    seen[value] = result
+    for k, v in pairs(value) do result[self:deepCopy(k, seen)] = self:deepCopy(v, seen) end
+    return result
+end
+
+function Refr_Utils:keys(value)
+    local result = {}
+    for k in pairs(value or {}) do result[#result + 1] = k end
+    return result
+end
+Refr_Utils.indexOf = Refr_Utils.getElementIndex
+Refr_Utils.isEmpty = Refr_Utils.tableIsEmpty
+
 return Refr_Utils

@@ -39,12 +39,8 @@ MLOS_ModsFiles.progress = { current = 0, total = 0 }
 ---@param modInfo table ModInfo object (item.modInfo)
 ---@return string|nil
 local function getWorkshopUpdateTimestamp(modInfo)
-	local okId, wsId = pcall(utils.getWorkshopId, modInfo)
-	if not okId or wsId == nil or wsId == "" then return nil end
-	if type(querySteamWorkshopItemDetails) ~= "function" then return nil end
-	local ok, res = pcall(querySteamWorkshopItemDetails, wsId)
-	if not ok or type(res) ~= "table" then return nil end
-	return tostring(res.timeUpdated or res.updateTime or res.time_updated or res.lastUpdated or "") or nil
+    local ok, id = pcall(utils.getWorkshopId, utils, modInfo)
+    if ok and id then return MLOS_ModsFiles.workshopTimes and MLOS_ModsFiles.workshopTimes[tostring(id)] end
 end
 
 --- Cheap signature of a mod: mod.info version + number of lua files +
@@ -72,7 +68,7 @@ local function getModSignature(modId, modInfo)
 
 	local updateTime = modInfo and getWorkshopUpdateTimestamp(modInfo) or ""
 
-	return tostring(version) .. "|" .. tostring(count) .. "|" .. tostring(updateTime)
+	return tostring(version) .. "|" .. tostring(count) .. "|" .. tostring(updateTime or "")
 end
 
 
@@ -91,43 +87,33 @@ end
 --- Map of mod root dir -> true for every mod that has at least one loaded lua file
 ---@return table
 local function getLoadedModDirs()
-	local separator = getFileSeparator()
-	local loadedDirs = {}
-	local count = getLoadedLuaCount()
-	for i = 0, count - 1 do
-		local path = getLoadedLua(i)
-		if path then
-			local modDir = path:match("^(.-[\\/]mods[\\/][^\\/]+)")
-			if modDir then
-				loadedDirs[modDir:gsub("[\\/]", separator)] = true
-			end
-		end
-	end
-	return loadedDirs
+    local paths = {}
+    for i = 0, getLoadedLuaCount() - 1 do
+        local path = getLoadedLua(i)
+        if path then paths[#paths + 1] = path:gsub("\\", "/") end
+    end
+    return paths
 end
 
-
---- List of actually loaded lua files (relative to the mod dir) for a loaded mod
----@param modId string
----@param dir string normalized mod root dir
----@return table
-local function listLoadedModFiles(modId, dir)
-	local separator = getFileSeparator()
-	local result = {}
-	local count = getLoadedLuaCount()
-	for i = 0, count - 1 do
-		local path = getLoadedLua(i)
-		if path then
-			local modDir, filePath = path:match("^(.-[\\/]mods[\\/][^\\/]+)[\\/].-[\\/](.*)$")
-			if modDir and filePath then
-				modDir = modDir:gsub("[\\/]", separator)
-				if modDir == dir then
-					table.insert(result, (filePath:gsub("[\\/]", separator)))
-				end
-			end
-		end
-	end
-	return result
+local function listLoadedModFiles(modId, dir, modInfo, paths)
+    local result, seen = {}, {}
+    local roots = {dir}
+    local ok, version = pcall(function() return modInfo:getVersionDir() end)
+    if ok and version then roots[#roots + 1] = version end
+    local commonOK, common = pcall(function() return modInfo:getCommonDir() end)
+    if commonOK and common then roots[#roots + 1] = common end
+    for _, path in ipairs(paths or getLoadedModDirs()) do
+        for _, root in ipairs(roots) do
+            root = root:gsub("\\", "/"):gsub("/$", "")
+            if path:sub(1, #root + 1) == root .. "/" then
+                -- getModFileReader expects paths relative to a mod version or common root.
+                local rel = path:match("(media/lua/.*)$")
+                if rel and not seen[rel] then seen[rel] = true; result[#result+1] = rel end
+                break
+            end
+        end
+    end
+    return result
 end
 
 
@@ -251,11 +237,31 @@ local function parseFileFunctions(modId, filename)
 	end
 
 	local lineNum = 0
+    local inBlockComment = false
 	local line = reader:readLine()
 
 	while line ~= nil do
 		lineNum = lineNum + 1
 
+        -- Strip line and long comments across lines before detecting definitions.
+        local clean = ""
+        local rest = line
+        while #rest > 0 do
+            if inBlockComment then
+                local close = rest:find("]]", 1, true)
+                if not close then rest = "" else rest = rest:sub(close + 2); inBlockComment = false end
+            else
+                local comment = rest:find("--", 1, true)
+                if not comment then clean = clean .. rest; rest = ""
+                else
+                    clean = clean .. rest:sub(1, comment - 1)
+                    if rest:sub(comment, comment + 3) == "--[[" then
+                        inBlockComment = true; rest = rest:sub(comment + 4)
+                    else rest = "" end
+                end
+            end
+        end
+        line = clean
 		-- fast pre-filter: a hook/overwrite always contains "function" or "="
 		local hasFunc = line:find("function", 1, true)
 		local hasAssign = line:find("=", 1, true)
@@ -348,6 +354,19 @@ end
 --      Public API
 --================================================
 
+-- Keep the existing ordered file array for UI compatibility, and expose each
+-- file's modification targets by path as required by layer consumers.
+local function indexFileTargets(data)
+    for _, mod in pairs(data) do
+        for _, file in ipairs(mod.files or {}) do mod.files[file] = {} end
+        for _, change in ipairs(mod.modifications or {}) do
+            if mod.files and mod.files[change.file] then
+                table.insert(mod.files[change.file], change.fullTarget)
+            end
+        end
+    end
+end
+
 --- Main entry point.
 ---@param modsList table list of mod list items (modList.items)
 ---@param opts table|nil { reread=bool, onProgress=func(cur,total), onComplete=func(data) }
@@ -377,20 +396,25 @@ function MLOS_ModsFiles:getData(modsList, opts)
 			local modId = item.modId
 			local dir = item.modInfo:getDir()
 			dir = dir and dir:gsub("[\\/]", separator)
-			local isLoaded = (dir ~= nil and loadedDirs[dir] == true)
+			local loadedFiles = dir and listLoadedModFiles(modId, dir, item.modInfo, loadedDirs) or {}
+			local isLoaded = #loadedFiles > 0
 
 			-- file list: for loaded mods the authoritative list comes from getLoadedLua(),
 			-- for the rest (or when the loaded list is empty) - from disk
 			local files
 			if isLoaded then
-				files = listLoadedModFiles(modId, dir)
+				files = loadedFiles
 				if #files == 0 then files = self:listModLuaFiles(modId) end
 			else
 				files = self:listModLuaFiles(modId)
 			end
 
 			local signature = getModSignature(modId, item.modInfo)
-			local cached = cache[modId]
+            local cached = cache[modId]
+            if self.steamUnavailable and cached and cached.signature then
+                local oldTime = cached.signature:match("|([^|]*)$")
+                if oldTime then signature = signature:gsub("|[^|]*$", "|" .. oldTime) end
+            end
 
 			if #files == 0 then
 				-- the mod has no lua files at all (textures/recipes/etc. only):
@@ -445,18 +469,59 @@ function MLOS_ModsFiles:getData(modsList, opts)
 			for modId, d in pairs(result) do
 				if self.data[modId] then
 					self.data[modId].modifications = d.modifications
-					self.data[modId].complete = true
+					self.data[modId].complete = not d.failed
 				end
 			end
+            indexFileTargets(self.data)
 			self:saveCache()
 			if opts.onComplete then opts.onComplete(self.data) end
 		end)
 	else
 		-- nothing to scan: everything came from the cache (or needs no analysis)
+        indexFileTargets(self.data)
 		if opts.onComplete then opts.onComplete(self.data) end
 	end
 
 	return self.data
+end
+
+
+-- Steam details are asynchronous. On failure reuse cached timestamps rather
+-- than invalidating every entry; local signatures still detect obvious edits.
+function MLOS_ModsFiles:queryAndGetData(modsList, opts)
+    if self.tickHandler then Events.OnFETick.Remove(self.tickHandler); self.tickHandler = nil end
+    self.isAnalyzing = false
+    self.requestGeneration = (self.requestGeneration or 0) + 1
+    local generation = self.requestGeneration
+    local function finish(status, info)
+        if generation ~= self.requestGeneration then return end
+        self.workshopTimes = {}
+        self.steamUnavailable = status ~= "Completed" or not info
+        if not self.steamUnavailable then
+            for i = 0, info:size() - 1 do
+                local detail = info:get(i)
+                self.workshopTimes[tostring(detail:getIDString())] = tostring(detail:getTimeUpdated())
+            end
+        end
+        self:getData(modsList, opts)
+    end
+    if type(querySteamWorkshopItemDetails) ~= "function" or type(getSteamWorkshopItemIDs) ~= "function" then
+        finish("NotCompleted")
+        return
+    end
+    local ok, ids = pcall(getSteamWorkshopItemIDs)
+    if not ok or not ids then finish("NotCompleted"); return end
+    local sized, count = pcall(function() return ids:size() end)
+    if sized and count == 0 then finish("NotCompleted"); return end
+    local called = false
+    local function callback(_, status, info)
+        if status ~= "Completed" and status ~= "NotCompleted" then return end
+        if called then return end
+        called = true
+        finish(status, info)
+    end
+    local success = pcall(querySteamWorkshopItemDetails, ids, callback, self)
+    if not success and not called then called = true; finish("NotCompleted") end
 end
 
 
@@ -471,10 +536,8 @@ end
 ---@param onProgress function|nil function(current, total)
 ---@param onComplete function|nil function(result) result[modId] = { modifications = {...} }
 function MLOS_ModsFiles:startAsyncAnalysis(queue, onProgress, onComplete)
-	if self.isAnalyzing then
-		print("[MLOS] Files analysis is already running, skipping")
-		return
-	end
+    if self.tickHandler then Events.OnFETick.Remove(self.tickHandler); self.tickHandler = nil end
+    self.isAnalyzing = false
 	if not queue or #queue == 0 then
 		if onComplete then onComplete({}) end
 		return
@@ -495,6 +558,7 @@ function MLOS_ModsFiles:startAsyncAnalysis(queue, onProgress, onComplete)
 		for i, task in ipairs(queue) do
 			local funcsModified = parseFileFunctions(task.modId, task.relPath)
 
+            if not funcsModified then result[task.modId].failed = true end
 			if funcsModified and #funcsModified > 0 then
 				local data = result[task.modId]
 				for _, funcInfo in ipairs(funcsModified) do
@@ -502,7 +566,7 @@ function MLOS_ModsFiles:startAsyncAnalysis(queue, onProgress, onComplete)
 						file = task.relPath,
 						className = funcInfo.className,
 						methodName = funcInfo.methodName,
-						fullTarget = funcInfo.className .. ":" .. funcInfo.methodName,
+						fullTarget = funcInfo.className .. (funcInfo.separator or ":") .. funcInfo.methodName,
 						alias = funcInfo.alias,
 						line = funcInfo.line,
 						isHook = funcInfo.isHook -- true: safe hook, false: full overwrite
@@ -530,6 +594,9 @@ function MLOS_ModsFiles:startAsyncAnalysis(queue, onProgress, onComplete)
 				print("[MLOS ERROR] Files analysis error: " .. tostring(err))
 				self.isAnalyzing = false
 				Events.OnFETick.Remove(onTickHandler)
+                self.tickHandler = nil
+                for _, mod in pairs(result) do mod.failed = true end
+                if onComplete then onComplete(result) end
 			end
 		else
 			self.isAnalyzing = false
@@ -537,6 +604,7 @@ function MLOS_ModsFiles:startAsyncAnalysis(queue, onProgress, onComplete)
 		end
 	end
 
+    self.tickHandler = onTickHandler
 	Events.OnFETick.Add(onTickHandler)
 end
 
@@ -544,56 +612,26 @@ end
 --- Synchronous analysis of all loaded files (used for debugging)
 ---@param modsList table
 function MLOS_ModsFiles:analyzeFolders(modsList)
-	if not modsList then return {} end
-	local queue = {}
-	local separator = getFileSeparator()
-	local loadedDirs = getLoadedModDirs()
-	local dirMap = {}
-
-	for i = 1, #modsList do
-		local item = modsList[i].item
-		if item then
-			local dir = item.modInfo:getDir()
-			dir = dir and dir:gsub("[\\/]", separator)
-			if dir and loadedDirs[dir] then
-				dirMap[dir] = item.modId
-			end
-		end
-	end
-
-	local count = getLoadedLuaCount()
-	for i = 0, count - 1 do
-		local path = getLoadedLua(i)
-		if path then
-			local modDir, filePath = path:match("^(.-[\\/]mods[\\/][^\\/]+)[\\/].-[\\/](.*)$")
-			if modDir and filePath then
-				modDir = modDir:gsub("[\\/]", separator)
-				if dirMap[modDir] then
-					table.insert(queue, { modId = dirMap[modDir], relPath = filePath:gsub("[\\/]", separator) })
-				end
-			end
-		end
-	end
-
-	local result = {}
-	for _, task in ipairs(queue) do
-		local funcsModified = parseFileFunctions(task.modId, task.relPath)
-		if funcsModified and #funcsModified > 0 then
-			result[task.modId] = result[task.modId] or { modifications = {} }
-			for _, funcInfo in ipairs(funcsModified) do
-				table.insert(result[task.modId].modifications, {
-					file = task.relPath,
-					className = funcInfo.className,
-					methodName = funcInfo.methodName,
-					fullTarget = funcInfo.className .. ":" .. funcInfo.methodName,
-					alias = funcInfo.alias,
-					line = funcInfo.line,
-					isHook = funcInfo.isHook
-				})
-			end
-		end
-	end
-	return result
+    local result = {}
+    local paths = getLoadedModDirs()
+    for _, row in ipairs(modsList or {}) do
+        local item = row.item
+        local dir = item and item.modInfo:getDir()
+        if dir then
+            for _, file in ipairs(listLoadedModFiles(item.modId, dir, item.modInfo, paths)) do
+                local functions = parseFileFunctions(item.modId, file)
+                for _, f in ipairs(functions or {}) do
+                    result[item.modId] = result[item.modId] or {modifications={}}
+                    table.insert(result[item.modId].modifications, {
+                        file=file, className=f.className, methodName=f.methodName,
+                        fullTarget=f.className .. (f.separator or ':') .. f.methodName,
+                        line=f.line, isHook=f.isHook, alias=f.alias
+                    })
+                end
+            end
+        end
+    end
+    return result
 end
 
 

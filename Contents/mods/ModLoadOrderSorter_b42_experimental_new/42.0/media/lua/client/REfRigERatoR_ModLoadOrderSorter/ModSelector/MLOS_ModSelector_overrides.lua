@@ -11,6 +11,10 @@
 --- This mod has no dependencies
 ---
 require("ISUI/ISProgressBar")
+require("ISUI/ISTickBox")
+require("ISUI/ISToolTip")
+require("ISUI/ISScrollingListBox")
+require("ISUI/ISButton")
 require("OptionScreens/ModSelector/ModSelector")
 
 local utils = require('REfRigERatoR_ModLoadOrderSorter/Core/1_Utils')
@@ -19,6 +23,7 @@ local layersManager = require('REfRigERatoR_ModLoadOrderSorter/Layers/Manager')
 local sortingCore = require('REfRigERatoR_ModLoadOrderSorter/Core/2_SortingCore')
 local scrollExt = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/ScrollExtensions')
 local popup = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/WarningPopup')
+local Editor = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/SortingRulesEditor')
 
 
 local FONT_HGT_SMALL = getTextManager():getFontHeight(UIFont.Small)
@@ -105,6 +110,7 @@ end
 -- ================================================
 function ModLoadOrderPanelOverride:render()
     ISPanelJoypad.render(self)
+    self:MLOS_updateView()
     if self.modList.dragItem == nil then return end
 
     local mY = self:getMouseY()
@@ -122,6 +128,11 @@ function ModLoadOrderPanelOverride:instantiate()
     origInstantiate(self)
     local panel = self
     print("[MLOS] Layers initialisation STARTED")
+    if self.MLOS_ProgressBar then
+        self.MLOS_ProgressBar:setVisible(true)
+        self.MLOS_ProgressBar:setText("Checking workshop updates...")
+        self.MLOS_ProgressBar:setProgress(0)
+    end
     core.layersManager:initialise(self.modList.items, {
         onFilesProgress = function(current, total)
             if panel.MLOS_ProgressBar then
@@ -134,6 +145,7 @@ function ModLoadOrderPanelOverride:instantiate()
             print("[MLOS] Layers initialisation FINISHED")
             if panel.MLOS_ProgressBar then panel.MLOS_ProgressBar:setVisible(false) end
             panel:showLayerWarnings()
+            panel:MLOS_refresh()
         end,
     })
 end
@@ -161,6 +173,8 @@ function ModLoadOrderPanelOverride:autoSort()
             self.warningPopup:addMessage(w.title, w.message, w.layer, w.severity)
         end
     end
+    self.modList.selected_map = {}; self.modList.selected_flat = nil
+    self:MLOS_refresh()
     print("[MLOS] " .. getText("UI_MLOS_SortApplied"))
 end
 
@@ -211,136 +225,137 @@ function ModLoadOrderPanelOverride:createChildren()
     scrollExt:addMoveButtons(self.modList)
     scrollExt:addMultiselectionSupport(self.modList)
 
-    scrollExt:addContextMenu(self, self.modList.width - PADDING , 50 + 3)
-    scrollExt:addContextMenuOption(self, "Save to file", "Save mods to files", function(slf) print("[MLOS] Saved to file") end)
-    scrollExt:addContextMenuOption(self, "Save to clipboard", "Save mods to clipboard", function(slf) print("[MLOS] Saved to clipboard") end)
-    scrollExt:addContextMenuOption(self, "Open MLOS folder", "Open folder with  Mod Load Order Sorter cache files", function(slf) print("[MLOS] Open MLOS folder: " .. core.MLOS_ROOT) end)
-    scrollExt:addContextMenuOption(self, "Dump debug data to file", "Writes all layers data + dependency graph + last sort result to '" .. core.MLOS_ROOT .. "/debug_dump.txt' (send this file for bug reports)", function(slf)
-        local text = core.layersManager:dumpDebugData(slf.modList.items)
-        local file = getFileWriter(core.MLOS_ROOT .. "/debug_dump.txt", true, false)
-        if file then
-            file:write(text)
-            file:close()
-            print("[MLOS] Debug dump saved to " .. core.MLOS_ROOT .. "/debug_dump.txt (" .. #text .. " chars)")
-        end
+    local x = width * 0.5 + PADDING
+    local rightWidth = width - x - PADDING
+    local sortButton = ISButton:new(x, 10, 150, BUTTON_HGT, "Auto sort", self, self.autoSort)
+    sortButton:initialise(); sortButton:instantiate(); self:addChild(sortButton)
+    local editButton = ISButton:new(x + 160, 10, 150, BUTTON_HGT, "Rules editor", self, function(panel)
+        if not core.layers.sortingRules or not core.layers.modInfo then return end
+        local w, h = getCore():getScreenWidth() * .9, getCore():getScreenHeight() * .85
+        local editor = Editor:new((getCore():getScreenWidth()-w)/2, (getCore():getScreenHeight()-h)/2, w, h, panel)
+        editor:initialise(); editor:instantiate()
+        if panel.fileTooltip:getIsVisible() then panel.fileTooltip:setVisible(false); panel.fileTooltip:removeFromUIManager() end
+        panel:setVisible(false)
+        editor:addToUIManager(); editor:bringToTop()
     end)
-    scrollExt:addContextMenuOption(self, "Copy debug data to clipboard", "Copies all layers data + dependency graph + last sort result to the clipboard", function(slf)
-        local text = core.layersManager:dumpDebugData(slf.modList.items)
-        Clipboard.setClipboard(text)
-        print("[MLOS] Debug dump copied to clipboard (" .. #text .. " chars)")
+    editButton:initialise(); editButton:instantiate(); self:addChild(editButton)
+    self.conflictFilter = ISTickBox:new(x, 46, rightWidth, 25, "", self, function(panel) panel:MLOS_refresh() end)
+    self.conflictFilter:initialise(); self.conflictFilter:instantiate()
+    self.conflictFilter:addOption("Show conflicts only"); self:addChild(self.conflictFilter)
+    local inspector = ISPanel:new(x, 76, rightWidth, height - 76 - BUTTON_HGT - 20)
+    inspector:initialise(); inspector:instantiate(); self:addChild(inspector)
+    local list = ISScrollingListBox:new(0, 40, rightWidth, inspector.height - 40)
+    list:initialise(); list:instantiate(); list.itemheight = FONT_HGT_SMALL + 8
+    list.doDrawItem = function(box, y, row)
+        local color = row.item.conflict and {1, .65, .2} or {1,1,1}
+        if box.selected == row.index then box:drawRect(0,y,box.width,row.height,.25,.6,.6,.6) end
+        box:drawText(row.text, 4, y+3, color[1],color[2],color[3],1,UIFont.Small)
+        return y + row.height
+    end
+    inspector:addChild(list); self.filesList = list
+    scrollExt:addSearchEntry(list, -40)
+    self.fileTooltip = ISToolTip:new(); self.fileTooltip:setOwner(self)
+    self.fileTooltip:setVisible(false); self.fileTooltip:setAlwaysOnTop(true); self.fileTooltip.followMouse = true
+    scrollExt:addContextMenu(self, self.modList.width - PADDING, 53)
+    scrollExt:addContextMenuOption(self, "Re-scan files", "Rebuild the file analysis cache", function(panel)
+        core.layersManager:initialise(panel.modList.items, {
+            reread = true,
+            onFilesProgress = function(n, total)
+                panel.MLOS_ProgressBar:setVisible(true)
+                panel.MLOS_ProgressBar:setProgress(total > 0 and n / total or 1)
+            end,
+            onComplete = function()
+                panel.MLOS_ProgressBar:setVisible(false); panel:MLOS_refresh(); panel:showLayerWarnings()
+            end
+        })
     end)
+end
 
-    scrollExt:addContextMenuOption(self, "run querySteamWorkshopItemDetails", nil, function(slf)
-        local ids = getSteamWorkshopItemIDs()
-        local callbackFunc = function(_slf, status, info)
-            if status == "Completed" then
-                for i=1,info:size() do
-                    local details = info:get(i-1)
-                    local workshopID = details:getIDString()
+-- Validation and inspector are shared between mouse selection, drag/reorder,
+-- completed analysis and editor saves. The signature avoids rebuilding every frame.
+function ModLoadOrderPanelOverride:MLOS_updateView()
+    if not self.modList or not self.filesList or not core.layers.modInfo then return end
+    local parts = {}
+    for _, row in ipairs(self.modList.items) do parts[#parts+1] = row.item.modId end
+    for index in pairs(self.modList.selected_map or {}) do parts[#parts+1] = "@" .. index end
+    parts[#parts+1] = tostring(self.modList.selected)
+    local signature = table.concat(parts, "|")
+    if signature ~= self.MLOS_viewSignature then self.MLOS_viewSignature = signature; self:MLOS_refresh() end
+    local list = self.filesList
+    local row = list:isMouseOver() and list.items[list.mouseoverselected or -1] or nil
+    if row then
+        self.fileTooltip.name = row.text
+        self.fileTooltip.description = table.concat(row.item.details, " <LINE> ")
+        if not self.fileTooltip:getIsVisible() then self.fileTooltip:addToUIManager(); self.fileTooltip:setVisible(true) end
+    elseif self.fileTooltip:getIsVisible() then
+        self.fileTooltip:setVisible(false); self.fileTooltip:removeFromUIManager()
+    end
+end
+
+function ModLoadOrderPanelOverride:MLOS_refresh()
+    if not self.filesList or not core.layers.modInfo then return end
+    local status = sortingCore:validate(self.modList.items)
+    local colors = {red={r=.98,g=.2,b=.2}, purple={r=.75,g=.3,b=1}, yellow={r=1,g=.75,b=.2}}
+    for i, row in ipairs(self.modList.items) do
+        row.itemindex = i
+        row.color = colors[status[row.item.modId]] or {r=1,g=1,b=1}
+    end
+    local data = core.layers.modFiles and core.layers.modFiles.data or {}
+    local files, targets = {}, {}
+    for id, mod in pairs(data) do
+        for _, file in ipairs(mod.files or {}) do
+            files[file] = files[file] or {}; files[file][id] = true
+        end
+        for _, m in ipairs(mod.modifications or {}) do
+            local target = (m.className or '') .. '.' .. (m.methodName or '')
+            targets[target] = targets[target] or {}; targets[target][id] = true
+        end
+    end
+    local function count(set) local n=0; for _ in pairs(set or {}) do n=n+1 end; return n end
+    local selected = self.modList.selected_map or {}
+    if not next(selected) and self.modList.selected and self.modList.selected > 0 then selected = {[self.modList.selected]=true} end
+    local union = {}
+    for i in pairs(selected) do
+        local row = self.modList.items[i]
+        local id = row and row.item.modId
+        local mod = id and data[id]
+        if mod then
+            for _, file in ipairs(mod.files or {}) do
+                local entry = union[file] or {details={}, conflict=count(files[file]) > 1, seen={}}
+                union[file] = entry
+                if not entry.seen[id] then
+                    entry.seen[id] = true
+                    local owners = {}; for owner in pairs(files[file] or {}) do owners[#owners+1] = owner end
+                    table.sort(owners)
+                    entry.details[#entry.details+1] = "File: " .. table.concat(owners, ", ")
                 end
             end
-            if status == "NotCompleted" then
-            end
-        end
-        querySteamWorkshopItemDetails(ids, callbackFunc, slf)
-    end)
-
-    -- scrollExt:addCollapsableFoldersSupport(self.modList)
-    -- scrollExt:addFolder(self.modList, "unsorted")
-
-
-
-
-
-    scrollExt:addItemContextMenu(self.modList,
-        function(selectedItems)
-            if #selectedItems > 1 then return "Disable (" .. #selectedItems .. ")"
-            else return "Disable" end
-        end,
-        "Disables selected mods",
-        function(slf, selectedItems, clickedRawItem)
-            for _, item in ipairs(selectedItems) do
-                ModSelector.instance.model:forceActivateMods(item.modInfo, false)
-
-            end
-        end
-    )
-
-    scrollExt:addItemContextMenu(self.modList,
-        "Debug print",
-        "Print mod list",
-        function(slf, selectedItems, clickedId,  clickedRawItem)
-            utils:tprint(ModsInfo.data)
-        end
-    )
-    scrollExt:addItemContextMenu(self.modList,
-        "Debug get all mods files ",
-        nil,
-        function(slf, selectedItems, clickedId, clickedRawItem)
-            local loadedLuaCount = getLoadedLuaCount()
-            local p = nil
-            for i = 0, loadedLuaCount-1 do
-                p = getLoadedLua(i)
-                if string.find(p, "/workshop/", 1, true) or string.find(p, "/Workshop/", 1, true) then
-                    print("MCH Loaded Lua:", p)
-                end
-            end
-        end
-    )
-    scrollExt:addItemContextMenu(self.modList,
-        "Debug analyzeFolders",
-        nil,
-        function(slf, selectedItems, clickedId, clickedRawItem)
-            local modFiles = core.layers.modFiles
-            if modFiles then utils:tprint(modFiles:analyzeFolders(slf.items)) end
-        end
-    )
-
-    scrollExt:addItemContextMenu(self.modList,
-        "Debug re-scan mod files (ignore cache)",
-        nil,
-        function(slf, selectedItems, clickedId, clickedRawItem)
-            local panel = slf.parent
-            local modFiles = core.layers.modFiles
-            if not modFiles then return end
-            core.layersManager:initialise(slf.items, {
-                reread = true,
-                onFilesProgress = function(current, total)
-                    if panel.MLOS_ProgressBar then
-                        panel.MLOS_ProgressBar:setVisible(true)
-                        panel.MLOS_ProgressBar:setText(getText("UI_MLOS_Analysis_Progress", current, total))
-                        panel.MLOS_ProgressBar:setProgress(total > 0 and (current / total) or 1)
+            for _, m in ipairs(mod.modifications or {}) do
+                local entry = union[m.file]
+                if entry then
+                    local target = (m.className or '') .. '.' .. (m.methodName or '')
+                    entry.details[#entry.details+1] = id .. ': ' .. (m.fullTarget or target)
+                    if count(targets[target]) > 1 then
+                        entry.conflict = true
+                        local owners = {}; for owner in pairs(targets[target]) do owners[#owners+1] = owner end
+                        table.sort(owners)
+                        entry.details[#entry.details+1] = target .. " : " .. table.concat(owners, ", ")
                     end
-                end,
-                onComplete = function()
-                    if panel.MLOS_ProgressBar then panel.MLOS_ProgressBar:setVisible(false) end
-                    print("[MLOS] Re-scan finished, cache updated")
-                end,
-            })
+                end
+            end
         end
-    )
-    scrollExt:addItemContextMenu(self.modList,
-        "Debug popup",  nil,
-        function(slf, selectedItems, clickedId,  clickedRawItem)
-            local rnd =  ZombRand(0,2)
-            slf.parent.warningPopup:addMessage("O blya", "Something wrong with " .. tostring(selectedItems[1].modId) .." fsdfdaslgfmklosrefmgioasrgnadsfgasdfsgjlkdafsnvlvaiolgmlkasdgidciovvmnaskldfgnmklasdm asdjfnajsdfn asdnf asdkjfnioavb jdnf dgjnasdnf jasnvn nandjasfn suaidjkfasbn ", "debug", rnd == 0 and "CRITICAL" or "WARNING")
+    end
+    self.filesList:clear()
+    self.filesList.parent.foundItems = {}; self.filesList.parent.foundIndex = 0
+    local names = {}; for name in pairs(union) do names[#names+1] = name end; table.sort(names)
+    local only = self.conflictFilter:isSelected(1)
+    for _, name in ipairs(names) do
+        if not only or union[name].conflict then
+            union[name].name = name; union[name].modId = name
+            self.filesList:addItem(name, union[name])
+            self.filesList.items[#self.filesList.items].itemindex = #self.filesList.items
         end
-    )
-
-
-
- 
-
-    
-
-    -- -- NEW ELEMENTS 
-    -- local modFilesScroll = ISScrollingListBox:new(width * 0.5 + PADDING, 50, width * 0.5 - PADDING * 3, height - (50 + PADDING + BUTTON_HGT + PADDING))
-    -- modFilesScroll:initialise()
-    -- modFilesScroll:instantiate()
-    -- self:addChild(modFilesScroll)
-
-    -- scrollExt:addTitle(modFilesScroll, "Fiels", true, {r=0.28, g=0.35, b=0.8, a=0.8})
-    -- scrollExt:addBackground(modFilesScroll, nil, {})
+    end
 end
 
 
