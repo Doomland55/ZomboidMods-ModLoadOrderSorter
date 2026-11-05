@@ -252,68 +252,6 @@ function MLOS_CORE:readTxtFile(fileName, txtToDataFunc)
 end
 
 
--- function MLOS_CORE:saveBinaryCache(cacheData)
---     local out = getFileOutput("mlos_cache.bin")
---     if not out then return end
-
---     -- Считаем количество модов
---     local modCount = 0
---     for _ in pairs(cacheData) do modCount = modCount + 1 end
---     out:writeInt(modCount)
-
---     for modId, data in pairs(cacheData) do
---         out:writeUTF(modId) -- Записываем ID мода
-        
---         local modsList = data.modifications or {}
---         out:writeInt(#modsList) -- Сколько функций он модифицирует
-
---         for _, item in ipairs(modsList) do
---             out:writeUTF(item.file or "")
---             out:writeUTF(item.className or "")
---             out:writeUTF(item.methodName or "")
---             out:writeBoolean(item.isHook == true) -- хук или жесткий оверрайт
---         end
---     end
-
---     out:flush()
---     out:close()
---     print("[MLOS] Бинарный кэш успешно записан!")
--- end
-
-
--- function MLOS_CORE:loadBinaryCache()
---     local input = getFileInput("mlos_cache.bin")
---     if not input then return nil end
-
---     local cacheData = {}
---     local modCount = input:readInt() -- Читаем число модов
-
---     for i = 1, modCount do
---         local modId = input:readUTF()
---         local funcCount = input:readInt()
-        
---         cacheData[modId] = { modifications = {} }
-
---         for j = 1, funcCount do
---             local file = input:readUTF()
---             local className = input:readUTF()
---             local methodName = input:readUTF()
---             local isHook = input:readBoolean()
-
---             table.insert(cacheData[modId].modifications, {
---                 file = file,
---                 className = className,
---                 methodName = methodName,
---                 isHook = isHook
---             })
---         end
---     end
-
---     input:close()
---     print("[MLOS] Бинарный кэш мгновенно загружен!")
---     return cacheData
--- end
-
 
 MLOS_CORE:initCategoryConfig()
 return MLOS_CORE

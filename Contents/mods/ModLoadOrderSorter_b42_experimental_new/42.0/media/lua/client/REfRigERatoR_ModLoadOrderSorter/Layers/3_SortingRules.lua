@@ -3,10 +3,9 @@ local core = require('REfRigERatoR_ModLoadOrderSorter/Core/Core')
 local cacheFileExists = cacheFileExists
 
 local RULES_NAME = "sorting_rules.txt"
--- local RULES_FILE = core.MLOS_ROOT .. "/" .. RULES_NAME
 
 local MLOS_SortingRules = {}
-MLOS_SortingRules.data = {} -- data from modInfo. data[modId] = {name, desc, category, requirements, loadAfter, ...}
+MLOS_SortingRules.data = {} -- saved rules by mod ID
 
 
 ---@return table
@@ -69,28 +68,6 @@ function MLOS_SortingRules:getSRDataText(modId, data)
 	return text ~= "" and "[" .. modId .. "]\r\n" .. text or nil
 end
 
--- function MLOS_SortingRules:addSortingRule(modId, loadAfter, loadBefore, incompatibleMods, loadfirst, loadlast, category)
--- 	local file = getFileWriter(RULES_FILE, true, true)
--- 	local text = getSRDataText(modId, loadAfter, loadBefore, incompatibleMods, loadfirst, loadlast, category)
--- 	if text~=nil then file:write(text) end
--- 	file:close()
--- 	self.data = nil
--- end
-
-function MLOS_SortingRules:updateSortingRule(modId, data)
-	self:getData()
-
-	local rulesFromFile = self.data[modId] or {}
-	self.data[modId] = {
-		loadAfter = data.loadAfter or rulesFromFile.loadAfter,
-		loadBefore = data.loadBefore or rulesFromFile.loadBefore,
-		incompatibleMods = data.incompatibleMods or rulesFromFile.incompatibleMods,
-		loadFirst = data.loadFirst or rulesFromFile.loadFirst,
-		loadLast = data.loadLast or rulesFromFile.loadLast,
-		category = data.category
-	}
-	return self.data
-end
 
 ---@param srData table|nil optional
 ---@param fileName string|nil optional
@@ -100,12 +77,6 @@ function MLOS_SortingRules:saveSortingRules(srData, fileName)
 	return core:saveTxtFile(rulesFile, srData or self.data or {}, function(...) return self:getSRDataText(...) end)
 end
 
-function MLOS_SortingRules:doRulesBackup()
-	local backupname = ("%s/%s_%s.backup"):format(core.MLOS_ROOT, RULES_NAME:sub(1, -5), core.MOD_VERSION)
-	if cacheFileExists(backupname) == false then
-		self:saveSortingRules(self.data, RULES_NAME:sub(1, -5) .. "_" .. core.MOD_VERSION .. ".backup")
-	end
-end
 
 ---@return table rules sorting rules from file
 function MLOS_SortingRules:readSortingRules(fileName)

@@ -29,7 +29,7 @@ local function button(self, x, y, w, text, action)
     b:initialise(); b:instantiate(); self:addChild(b)
     return b
 end
-local function list(self, x, y, w, h, click)
+local function list(self, x, y, w, h, click, navigation)
     local l = ISScrollingListBox:new(x, y, w, h)
     l:initialise(); l:instantiate(); l.itemheight = 24
     l.doDrawItem = function(box, yy, row)
@@ -42,6 +42,18 @@ local function list(self, x, y, w, h, click)
         ISScrollingListBox.onMouseDown(box, xx, yy)
         local row = box.items[box.selected]
         if row then click(self, row.item.modId) end
+    end
+    if navigation then
+        -- Do not change the right-hand selection or navigate while a rule is edited.
+        for _, method in ipairs({'onMouseDown', 'onMouseUp', 'onRightMouseDown', 'onRightMouseUp'}) do
+            local original = l[method]
+            if original then
+                l[method] = function(box, xx, yy)
+                    if self.mode then return true end
+                    return original(box, xx, yy)
+                end
+            end
+        end
     end
     self:addChild(l); return l
 end
@@ -81,9 +93,9 @@ function Editor:createChildren()
     self.first = combo(self, x2, top+210, w, {'off','on','category'}, 'loadFirst')
     self.last = combo(self, x2, top+265, w, {'off','on','category'}, 'loadLast')
     local h = math.floor((bottom-top-60)/3)
-    self.ruleList = list(self, x3, top+20, w, h, self.navigate)
-    self.requiredList = list(self, x3, top+40+h, w, h, self.navigate)
-    self.requiredByList = list(self, x3, top+60+2*h, w, h, self.navigate)
+    self.ruleList = list(self, x3, top+20, w, h, self.navigate, true)
+    self.requiredList = list(self, x3, top+40+h, w, h, self.navigate, true)
+    self.requiredByList = list(self, x3, top+60+2*h, w, h, self.navigate, true)
     button(self, x1, self.height-35, w, 'Exit without saving', self.discard)
     button(self, x2, self.height-35, w, 'Simulate', self.simulate)
     button(self, x3, self.height-35, w, 'Save and exit', self.save)
@@ -111,10 +123,10 @@ function Editor:selectMod(id)
     self:refresh()
 end
 function Editor:navigate(id)
+    if self.mode then return end
     local found = false
     for _, row in ipairs(self.order) do if row.item.modId == id then found = true; break end end
     if not found then return end
-    self.mode = nil; self.pending = nil
     self.selectedId = id
     self:refresh()
     for i, row in ipairs(self.mods.items) do if row.item.modId == id then self.mods:ensureVisible(i); break end end

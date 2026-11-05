@@ -269,7 +269,6 @@ function MLOS_ModsInfo:getExtraModInfo(modObject)
 	modinfoFileData.require = nil
 	extraModInfo = utils:MergeTablesDedup(extraModInfo, modinfoFileData)
 
-	-- extraModInfo = utils:MergeTablesDedup(extraModInfo, readModInfoFile(extraModInfo.id))
 
 	-- detect category from tags
 	if not utils:tableIsEmpty(extraModInfo.tags) then
@@ -283,48 +282,6 @@ function MLOS_ModsInfo:getExtraModInfo(modObject)
 
 	return extraModInfo
 end
-
-
--- ---@param modsList table list of mods
--- ---@return table current order
--- function MLOS_ModsInfo:UpdateData(modsList, sortingRulesCache)
--- 	local curentOrder = {}
-
--- 	for _, val in ipairs(modsList) do
--- 		local modId = val.item.modId
--- 		local extraModInfo = self.data[modId] or self:getExtraModInfo(val)
-		
--- 		-- recalculate cache 
--- 		extraModInfo.warnings = {}
--- 		extraModInfo.sortingRules = sortingRulesCache[modId] or {}
--- 		extraModInfo.fixedLoadAfter = {}
-
--- 		if not utils:contains(core.rawCategoryOrder, extraModInfo.category) then
--- 			pcall(function() error("\n[ERROR] --> [MLOS] Mod: [" .. extraModInfo.name .. "] have unknown category: " .. extraModInfo.category .. "\n") end )
--- 		end
-
--- 		extraModInfo.priority = getPriority(extraModInfo)
-		
--- 		self.data[modId] = extraModInfo
-
--- 		table.insert(curentOrder, modId)
--- 	end
-
--- 	for curmod, modinfo in pairs(self.data) do
--- 		local loadbefore = utils:MergeTablesDedup({}, modinfo.loadBefore, modinfo.sortingRules.loadBefore)
--- 		if loadbefore ~= nil then
--- 			for _, val in ipairs(loadbefore) do
--- 				local valModInfo = self.data[val]
--- 				if val ~= nil and valModInfo ~= nil then
--- 					utils:MergeTablesDedup(valModInfo.fixedLoadAfter, { curmod })
--- 				end
--- 			end
--- 		end
--- 	end
-
--- 	return curentOrder
--- end
-
 
 
 

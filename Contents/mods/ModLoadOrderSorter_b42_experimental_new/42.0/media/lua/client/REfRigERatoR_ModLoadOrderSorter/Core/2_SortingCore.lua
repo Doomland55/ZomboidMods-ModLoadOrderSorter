@@ -247,6 +247,16 @@ function MLOS_SortingCore:buildGraph(modsList, activeRules)
 end
 
 
+-- Shared by sorting and validation so positional rules have identical meaning.
+local function positionRank(id, rules, categories)
+    local rule = rules[id] or {}
+    if rule.loadFirst == "on" then return 0, 0, 0 end
+    if rule.loadLast == "on" then return 2, 0, 0 end
+    local position = rule.loadFirst == "category" and -1 or (rule.loadLast == "category" and 1 or 0)
+    return 1, categories[id] or #core.rawCategoryOrder, position
+end
+
+
 --- Kahn's topological sort. Among all currently available nodes the one with
 --- the highest priority (category + rules) is placed first; ties are broken by
 --- mod id (name). When a cycle is found, the WEAKEST remaining edge is removed
@@ -257,11 +267,10 @@ end
 ---@param modsList table modList.items
 ---@return table sorted array of modIds
 function MLOS_SortingCore:sort(modsList, activeRules)
-	local edges, enabled, orderIndex, catIndex = self:buildGraph(modsList, activeRules)
+	local edges, enabled, _, catIndex = self:buildGraph(modsList, activeRules)
 	self.lastEdges = edges
 	self.brokenEdges = {}
 	local modInfo = (core.layers.modInfo and core.layers.modInfo.data) or {}
-	local catCount = #core.rawCategoryOrder
 
 	local indegree = {}
 	for id in pairs(enabled) do indegree[id] = 0 end
@@ -276,21 +285,11 @@ function MLOS_SortingCore:sort(modsList, activeRules)
 		if d == 0 then table.insert(ready, id) end
 	end
 
-	-- effective priority: the category part is recomputed from the EFFECTIVE
-	-- category index (overridden during graph building so a required mod is
-	-- never in a later category than the mod that requires it); all other
-	-- modifiers of the declared priority (preorder, loadFirst/loadLast) are kept
+    -- Rank ready nodes by global position, promoted category and category position.
 	local rules = activeRules or (core.layers.sortingRules and core.layers.sortingRules.data) or {}
-    local function rank(id)
-        local rule = rules[id] or {}
-        if rule.loadFirst == "on" then return 0, 0, 0 end
-        if rule.loadLast == "on" then return 2, 0, 0 end
-        local position = rule.loadFirst == "category" and -1 or (rule.loadLast == "category" and 1 or 0)
-        return 1, catIndex[id] or catCount, position
-    end
     local function better(a, b)
-        local ag, ac, ap = rank(a)
-        local bg, bc, bp = rank(b)
+        local ag, ac, ap = positionRank(a, rules, catIndex)
+        local bg, bc, bp = positionRank(b, rules, catIndex)
         if ag ~= bg then return ag < bg end
         if ac ~= bc then return ac < bc end
         if ap ~= bp then return ap < bp end
@@ -409,10 +408,9 @@ function MLOS_SortingCore:sort(modsList, activeRules)
 end
 
 
---- Validates the current order and fills per-mod warnings (missing deps,
---- incompatible mods, deps placed below). Returns true when the order is valid.
+--- Returns the highest-severity validation status for each affected mod.
 ---@param modsList table modList.items
----@return boolean
+---@return table status by mod ID (purple, red or yellow)
 function MLOS_SortingCore:validate(modsList, activeRules)
     local info = (core.layers.modInfo and core.layers.modInfo.data) or {}
     local rules = activeRules or (core.layers.sortingRules and core.layers.sortingRules.data) or {}
@@ -443,18 +441,12 @@ function MLOS_SortingCore:validate(modsList, activeRules)
             end
         end
     end
-    local function rank(id)
-        local rule = rules[id] or {}
-        if rule.loadFirst == "on" then return 0, 0, 0 end
-        if rule.loadLast == "on" then return 2, 0, 0 end
-        return 1, cats[id], rule.loadFirst == "category" and -1 or (rule.loadLast == "category" and 1 or 0)
-    end
     for i = 1, #modsList do
         local a = modsList[i].item.modId
-        local ag, ac, ap = rank(a)
+        local ag, ac, ap = positionRank(a, rules, cats)
         for j = i + 1, #modsList do
             local b = modsList[j].item.modId
-            local bg, bc, bp = rank(b)
+            local bg, bc, bp = positionRank(b, rules, cats)
             if ag > bg or (ag == bg and (ac > bc or (ac == bc and ap > bp))) then
                 mark(a, "yellow"); mark(b, "yellow")
             end

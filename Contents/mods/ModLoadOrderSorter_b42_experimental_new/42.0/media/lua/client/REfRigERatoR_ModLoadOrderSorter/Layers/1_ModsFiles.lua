@@ -609,30 +609,5 @@ function MLOS_ModsFiles:startAsyncAnalysis(queue, onProgress, onComplete)
 end
 
 
---- Synchronous analysis of all loaded files (used for debugging)
----@param modsList table
-function MLOS_ModsFiles:analyzeFolders(modsList)
-    local result = {}
-    local paths = getLoadedModDirs()
-    for _, row in ipairs(modsList or {}) do
-        local item = row.item
-        local dir = item and item.modInfo:getDir()
-        if dir then
-            for _, file in ipairs(listLoadedModFiles(item.modId, dir, item.modInfo, paths)) do
-                local functions = parseFileFunctions(item.modId, file)
-                for _, f in ipairs(functions or {}) do
-                    result[item.modId] = result[item.modId] or {modifications={}}
-                    table.insert(result[item.modId].modifications, {
-                        file=file, className=f.className, methodName=f.methodName,
-                        fullTarget=f.className .. (f.separator or ':') .. f.methodName,
-                        line=f.line, isHook=f.isHook, alias=f.alias
-                    })
-                end
-            end
-        end
-    end
-    return result
-end
-
 
 return MLOS_ModsFiles
