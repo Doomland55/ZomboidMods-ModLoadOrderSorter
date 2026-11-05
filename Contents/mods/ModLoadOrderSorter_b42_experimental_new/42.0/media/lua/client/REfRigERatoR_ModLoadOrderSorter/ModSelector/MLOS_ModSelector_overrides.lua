@@ -183,7 +183,7 @@ function ModLoadOrderPanelOverride:createChildren()
     self:setHeight(height)
 
     -- NEW UI Elements --
-    self.MLOS_ProgressBar = ISProgressBar:new((width - 100) * 0.5 , self.backButton.y, 100, BUTTON_HGT, "")
+    self.MLOS_ProgressBar = ISProgressBar:new((width * (1 - 0.2)) * 0.5 , self.backButton.y, width * 0.2, BUTTON_HGT, "")
     self.MLOS_ProgressBar:setVisible(false)
     self.MLOS_ProgressBar:setAnchorLeft(true)
     self.MLOS_ProgressBar:setAnchorRight(false)
@@ -228,6 +228,21 @@ function ModLoadOrderPanelOverride:createChildren()
         local text = core.layersManager:dumpDebugData(slf.modList.items)
         Clipboard.setClipboard(text)
         print("[MLOS] Debug dump copied to clipboard (" .. #text .. " chars)")
+    end)
+
+    scrollExt:addContextMenuOption(self, "run querySteamWorkshopItemDetails", nil, function(slf)
+        local ids = getSteamWorkshopItemIDs()
+        local callbackFunc = function(_slf, status, info)
+            if status == "Completed" then
+                for i=1,info:size() do
+                    local details = info:get(i-1)
+                    local workshopID = details:getIDString()
+                end
+            end
+            if status == "NotCompleted" then
+            end
+        end
+        querySteamWorkshopItemDetails(ids, callbackFunc, slf)
     end)
 
     -- scrollExt:addCollapsableFoldersSupport(self.modList)
