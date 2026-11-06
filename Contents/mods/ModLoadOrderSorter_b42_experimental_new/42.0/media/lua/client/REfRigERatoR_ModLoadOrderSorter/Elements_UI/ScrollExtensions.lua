@@ -15,69 +15,48 @@ local BUTTON_HGT = FONT_HGT_SMALL + 6
 
 -- #region ====================== Tools =======================
 -- New variables:
--- ScrollObject: MLOS_scrollRect
+-- ScrollObject: -
 -- ScrollObject.parent: -
 --=============================================================
-local function getRectValues(scrollObject)
-    if scrollObject.MLOS_scrollRect == nil then
-        scrollObject.MLOS_scrollRect = {
-            x = scrollObject.x,
-            y = scrollObject.y,
-            width = scrollObject.width,
-            height = scrollObject.height
-        }
-    end
-    return scrollObject.MLOS_scrollRect
-end
 
-
-local function setRectValues(scrollObject, x, y, width, height, isOffset)
-    local scrollRect = getRectValues(scrollObject)
-   
+local function updateRectValues(slf, x, y, width, height, isOffset)
     if isOffset then
-        height = scrollRect.height + (height or -(y or 0))
-        width = scrollRect.width + (width or -(x or 0))
-        x = scrollRect.x + (x or 0)
-        y = scrollRect.y + (y or 0)
+        height = slf.height + (height or -(y or 0))
+        width = slf.width + (width or -(x or 0))
+        x = slf.x + (x or 0)
+        y = slf.y + (y or 0)
     else
-        x = x or scrollRect.x
-        y = y or scrollRect.y
-        width = width or scrollRect.width
-        height = height or scrollRect.height
+        x = x or slf.x
+        y = y or slf.y
+        width = width or slf.width
+        height = height or slf.height
     end
 
-    if scrollObject.vscroll then
-        scrollObject.vscroll:setHeight(height - (scrollObject.hscroll and 17 or 0))
-        scrollObject.vscroll.minimumHeight = scrollObject.vscroll.height
-        if width ~= scrollRect.width then
-            scrollObject.vscroll:setX(width - 17)
+    if slf.vscroll then
+        slf.vscroll:setHeight(height - (slf.hscroll and 17 or 0))
+        slf.vscroll.minimumHeight = slf.vscroll.height
+        if width ~= slf.width then
+            slf.vscroll:setX(width - 17)
         end
     end
-    if scrollObject.hscroll then
-        scrollObject.hscroll:setWidth(width - (scrollObject.vscroll and 17 or 0))
-        scrollObject.hscroll.minimumWidth = scrollObject.hscroll.width
-        if height ~= scrollRect.height then
-            scrollObject.hscroll:setY(height - 17)
+    if slf.hscroll then
+        slf.hscroll:setWidth(width - (slf.vscroll and 17 or 0))
+        slf.hscroll.minimumWidth = slf.hscroll.width
+        if height ~= slf.height then
+            slf.hscroll:setY(height - 17)
         end
     end
 
-    scrollRect.x = x
-    scrollRect.y = y
-    scrollRect.height = height
-    scrollRect.width = width
-
-    scrollObject:setX(x)
-    scrollObject:setY(y)
-    scrollObject:setHeight(height)
-    scrollObject:setWidth(width)
-
-    scrollObject.MLOS_scrollRect = scrollRect
+    slf:setX(x)
+    slf:setY(y)
+    slf:setHeight(height)
+    slf:setWidth(width)
 end
 -- #endregion
 
 
 function MLOS_ScrollExtensions:initialResacale(scrollObject, x, y, width, height)
-    setRectValues(scrollObject, x, y, width, height)
+    updateRectValues(scrollObject, x, y, width, height)
 end
 
 
@@ -90,7 +69,7 @@ end
 -- ============================================================
 
 function MLOS_ScrollExtensions:addTitle(scrollObject, titleText, inCenter, backgroundColor, fontSize)
-    if not scrollObject or not scrollObject.parent or not titleText then return end
+    if not scrollObject or not titleText then return end
 
     fontSize = fontSize or UIFont.Medium
 
@@ -99,8 +78,7 @@ function MLOS_ScrollExtensions:addTitle(scrollObject, titleText, inCenter, backg
     local absoluteBounds = scrollObject:getAbsoluteBounds()
     absoluteBounds.height = sizeInPixels + PADDING
 
-    setRectValues(scrollObject, nil, sizeInPixels + PADDING, nil, nil, true)
-    scrollObject.MLOS_scrollRect.titleAdded = true
+    updateRectValues(scrollObject, nil, sizeInPixels + PADDING, nil, nil, true)
 
     local localBounds = scrollObject:toLocalBounds(absoluteBounds)
     local origPrerender = scrollObject.prerender
@@ -150,57 +128,75 @@ end
 -- #endregion
 
 
+-- #region ================ Create List Object ================
+function MLOS_ScrollExtensions.createList(parent, x, y, width, height)
+    local list = ISScrollingListBox:new(x, y, width, height)
+    list:initialise()
+    list:instantiate()
+
+    list.doDrawItem = function(slf, y, item, alt)
+        local color = item.item.conflict and {1, .65, .2} or {1, 1, 1}
+        if slf.selected == item.index then slf:drawRect(0, y, slf.width, item.height, 0.25, 0.6, 0.6, 0.6) end
+        slf:drawText(item.text, 4, y+3, color[1], color[2], color[3], 1, UIFont.Small)
+        return y + item.height
+    end
+    parent:addChild(list)
+    return list
+end
+-- #endregion
+
+
 -- #region =================== Search Entry ===================
 -- New variables:
--- ScrollObject: -
--- ScrollObject.parent: foundItems, foundIndex, foundCounter, searchEntry
+-- ScrollObject: foundItems, foundIndex, foundCounter, searchEntry
+-- ScrollObject.parent: -
 -- ============================================================
 
 
-local function searchItems(self, scrollObject)
-    if not utils:tableIsEmpty(self.foundItems) or not scrollObject then return end
+local function searchItems(scrollObject)
+    if not utils:tableIsEmpty(scrollObject.foundItems) or not scrollObject then return end
 
-    local searchWord = string.lower(self.searchEntry:getInternalText())
+    local searchWord = string.lower(scrollObject.searchEntry:getInternalText())
     if not searchWord or searchWord == "" then return end
 
     for i, item in ipairs(scrollObject.items) do
         if string.find(string.lower(item.item.name), searchWord) or string.find(string.lower(item.item.modId), searchWord) then
-            table.insert(self.foundItems, i)
+            table.insert(scrollObject.foundItems, i)
         end
     end
 end
 
 
-local function getSearchResult(self, scrollObject)
-    if self.foundIndex > #self.foundItems then self.foundIndex = 1 end
-    if self.foundIndex < 1 then self.foundIndex = #self.foundItems end
+local function getSearchResult(scrollObject)
+    if scrollObject.foundIndex > #scrollObject.foundItems then scrollObject.foundIndex = 1 end
+    if scrollObject.foundIndex < 1 then scrollObject.foundIndex = #scrollObject.foundItems end
 
-    local itemIndex = self.foundItems[self.foundIndex]
+    local itemIndex = scrollObject.foundItems[scrollObject.foundIndex]
     if itemIndex ~= nil then
         scrollObject:ensureVisible(itemIndex)
-        self.foundCounter = 400
+        scrollObject.foundCounter = 400
     end
 end
 
 
-local function searchNext(self, scrollObject)
-    self.foundIndex = self.foundIndex + 1
-    getSearchResult(self, scrollObject)
+local function searchNext(scrollObject)
+    scrollObject.foundIndex = scrollObject.foundIndex + 1
+    getSearchResult(scrollObject)
 end
 
 
-local function searchPrev(self, scrollObject)
-    self.foundIndex = self.foundIndex - 1
-    getSearchResult(self, scrollObject)
+local function searchPrev(scrollObject)
+    scrollObject.foundIndex = scrollObject.foundIndex - 1
+    getSearchResult(scrollObject)
 end
 
 
-local function onChangeText(self, scrollObject, autoNext)
-    self.foundItems = {}
-    self.foundIndex = 0
-    searchItems(self, scrollObject)
+local function onChangeText(scrollObject, autoNext)
+    scrollObject.foundItems = {}
+    scrollObject.foundIndex = 0
+    searchItems(scrollObject)
     if autoNext then
-        searchNext(self, scrollObject)
+        searchNext(scrollObject)
     end
 end
 
@@ -211,11 +207,10 @@ local function addSearchHighlight(scrollObject)
     local originalDoDrawItems = scrollObject.doDrawItem
     scrollObject.doDrawItem = function(slf, y, item, alt)
 
-        local parent = slf.parent
-        if parent.foundCounter > 0 and parent.foundIndex > 0 and parent.foundItems[parent.foundIndex] == item.itemindex then
-            parent.foundCounter = parent.foundCounter - 1
+        if scrollObject.foundCounter > 0 and scrollObject.foundIndex > 0 and scrollObject.foundItems[scrollObject.foundIndex] == item.itemindex then
+            scrollObject.foundCounter = scrollObject.foundCounter - 1
             local alpha = 0.30
-            if parent.foundCounter < 80 then alpha = alpha - (alpha * alpha) end
+            if scrollObject.foundCounter < 80 then alpha = alpha - (alpha * alpha) end
             slf:drawRect(0, (y), slf:getWidth(), item.height-1, alpha, 0.5, 1, 1)
         end
 
@@ -248,31 +243,30 @@ function MLOS_ScrollExtensions:addSearchEntry(scrollObject, offset)
     if scrollObject == nil or scrollObject.parent == nil then return end
 
     local scrollParent = scrollObject.parent
-    scrollParent.foundItems = {}
-    scrollParent.foundIndex = 0
-    scrollParent.foundCounter = 0
+    scrollObject.foundItems = {}
+    scrollObject.foundIndex = 0
+    scrollObject.foundCounter = 0
 
-    local scrollRect = getRectValues(scrollObject)
-    
     -- TODO Переделать получение y координаты. отвязаться от принудительного применения Padding
-    local search_y = scrollRect.y
-    if offset ~= nil then search_y = scrollRect.y + offset end
+    local search_y = scrollObject.y
+    if offset ~= nil then search_y = search_y + offset end
 
-    scrollParent.searchEntry = ISTextEntryBox:new("", scrollRect.x + PADDING , search_y + PADDING, scrollRect.width / 2 - 2 * (BUTTON_HGT + PADDING), BUTTON_HGT)
+    local searchEntry = ISTextEntryBox:new("", scrollObject.x , search_y, scrollObject.width / 2 - 2 * (BUTTON_HGT + PADDING), BUTTON_HGT)
     if offset == nil then
-        setRectValues(scrollObject, nil, PADDING + BUTTON_HGT + PADDING, nil, nil, true)
+        updateRectValues(scrollObject, nil, BUTTON_HGT + PADDING, nil, nil, true)
     end
 
-    scrollParent.searchEntry.font = UIFont.Small
-    scrollParent.searchEntry.onTextChange = function() onChangeText(scrollParent, scrollObject, true ) end
-    scrollParent.searchEntry:initialise()
-    scrollParent.searchEntry:instantiate()
-    scrollParent.searchEntry:setPlaceholderText("Find: ...")
-    scrollParent.searchEntry:setClearButton(true)
-    scrollParent:addChild(scrollParent.searchEntry)
-    scrollParent.searchEntry:bringToTop()
+    searchEntry.font = UIFont.Small
+    searchEntry.onTextChange = function() onChangeText(scrollObject, true ) end
+    searchEntry:initialise()
+    searchEntry:instantiate()
+    searchEntry:setPlaceholderText("Find: ...")
+    searchEntry:setClearButton(true)
+    scrollParent:addChild(searchEntry)
+    searchEntry:bringToTop()
+    scrollObject.searchEntry = searchEntry
 
-    local searchBtnPrev = ISButton:new(scrollParent.searchEntry:getRight() + PADDING, scrollParent.searchEntry:getY(), BUTTON_HGT, BUTTON_HGT, "", scrollParent, function(_) searchPrev(scrollParent, scrollObject) end)
+    local searchBtnPrev = ISButton:new(searchEntry:getRight() + PADDING, searchEntry:getY(), BUTTON_HGT, BUTTON_HGT, "", scrollParent, function(_) searchPrev(scrollObject) end)
     searchBtnPrev.internal = "PREV_SEARCH"
     searchBtnPrev:initialise()
     searchBtnPrev:instantiate()
@@ -284,7 +278,7 @@ function MLOS_ScrollExtensions:addSearchEntry(scrollObject, offset)
     searchBtnPrev:setTextureRGBA(1,1,1,0.8)
     scrollParent:addChild(searchBtnPrev)
 
-    local searchBtnNext = ISButton:new(searchBtnPrev:getRight() + PADDING, scrollParent.searchEntry:getY(), BUTTON_HGT, BUTTON_HGT, "", scrollParent,  function(_) searchNext(scrollParent, scrollObject) end)
+    local searchBtnNext = ISButton:new(searchBtnPrev:getRight() + PADDING, searchEntry:getY(), BUTTON_HGT, BUTTON_HGT, "", scrollParent,  function(_) searchNext(scrollObject) end)
     searchBtnNext.internal = "NEXT_SEARCH"
     searchBtnNext:initialise()
     searchBtnNext:instantiate()
@@ -299,10 +293,11 @@ function MLOS_ScrollExtensions:addSearchEntry(scrollObject, offset)
     addSearchHighlight(scrollObject)
 
     -- Ctrl+F hotkey support
-    scrollParent:setWantKeyEvents(true)
-    scrollParent.onKeyRelease = onSearchKeyFocus
-    scrollParent.isKeyConsumed = isSearchKeyConsumed
+    scrollObject:setWantKeyEvents(true)
+    scrollObject.onKeyRelease = onSearchKeyFocus
+    scrollObject.isKeyConsumed = isSearchKeyConsumed
 
+    return searchEntry
 end
 
 -- #endregion
@@ -524,8 +519,8 @@ local function onMoveButton(self, button, scrollObject)
     applySelection(scrollObject, result.movedIndexesMap)
     scrollObject:ensureVisible(scrollObject.selected)
 
-    if scrollObject.parent and scrollObject.parent.searchEntry then
-        onChangeText(scrollObject.parent, scrollObject, false)
+    if scrollObject.searchEntry then
+        onChangeText(scrollObject, false)
     end
 end
 
@@ -565,6 +560,29 @@ function MLOS_ScrollExtensions:addMoveButtons(scrollObject)
     end
 end
 -- #endregion
+
+
+-- #region ================== Add AutoScroll ==================
+function MLOS_ScrollExtensions.addAutoscrollWhileDrag(scrollObject)
+    if scrollObject == nil or scrollObject.parent == nil then return end
+
+    local origPrerender = scrollObject.parent.prerender
+    scrollObject.parent.prerender = function(slf)
+        if origPrerender then origPrerender(slf) end
+
+        if scrollObject:isVScrollBarVisible() and scrollObject.dragItem ~= nil then
+            local mY = slf:getMouseY()
+            local diff = 0
+            if mY < scrollObject:getY() then diff = mY - scrollObject:getY() end
+            if mY > scrollObject:getBottom() then diff = mY - scrollObject:getBottom() end
+            if diff == 0 then return end
+
+            scrollObject:setYScroll(scrollObject:getYScroll() - (diff * 0.02 * UIManager.getMillisSinceLastRender()))
+        end
+    end
+end
+-- #endregion
+
 
 
 -- #region Override render
