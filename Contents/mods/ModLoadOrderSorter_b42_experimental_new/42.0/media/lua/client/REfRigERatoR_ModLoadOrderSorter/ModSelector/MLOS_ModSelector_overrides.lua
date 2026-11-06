@@ -15,6 +15,7 @@ require("ISUI/ISTickBox")
 require("ISUI/ISToolTip")
 require("ISUI/ISScrollingListBox")
 require("ISUI/ISButton")
+require("ISUI/ISPanelJoypad")
 require("OptionScreens/ModSelector/ModSelector")
 
 local utils = require('REfRigERatoR_ModLoadOrderSorter/Core/1_Utils')
@@ -50,8 +51,9 @@ function ModLoadOrderPanelOverride:fixMissingModsCrash()
         end
     end
 
-    if not utils:tableIsEmpty(missedMods) then
-        pcall(function(missedMods) error("\n[WARNING] --> [MLOS] Mods: [" .. table.concat(missedMods, ', ') .. "] were not found. They will be disabled to prevent the game from crashing.\n") end, missedMods)
+    if not utils:tableIsEmpty(missedMods) and self.warningPopup then
+        self.warningPopup:addWarning("Mods not found",  "Mods: [" .. table.concat(missedMods, ', ') .. "] were not found. They will be disabled to prevent the game from crashing.")
+        -- pcall(function(missedMods) error("\n[WARNING] --> [MLOS] Mods: [" .. table.concat(missedMods, ', ') .. "] were not found. They will be disabled to prevent the game from crashing.\n") end, missedMods)
     end
 end
 
@@ -90,49 +92,50 @@ function ModLoadOrderPanelOverride:fixBackButtonJoypadFocus()
 
     self.backButton:setOnClick(fixedBackFunc)
 end
+
 -- #endregion
+
 
 -- #region ============== Autoscroll ==============
 -- Scroll list box up or down if mouse is outside 
 -- ================================================
-function ModLoadOrderPanelOverride:render()
-    ISPanelJoypad.render(self)
-    self:MLOS_updateView()
-    if self.modList.dragItem == nil then return end
+-- function ModLoadOrderPanelOverride:render()
+--     ISPanelJoypad.render(self)
+--     -- self:MLOS_updateView()
+--     if self.modList.dragItem == nil then return end
 
-    local mY = self:getMouseY()
-    local diff = 0
-    if mY < self.modList:getY() then diff = mY - self.modList:getY() end
-    if mY > self.modList:getBottom() then diff = mY - self.modList:getBottom() end
-    if diff == 0 then return end
+--     local mY = self:getMouseY()
+--     local diff = 0
+--     if mY < self.modList:getY() then diff = mY - self.modList:getY() end
+--     if mY > self.modList:getBottom() then diff = mY - self.modList:getBottom() end
+--     if diff == 0 then return end
 
-    self.modList:setYScroll(self.modList:getYScroll() - (diff * 0.02 * UIManager.getMillisSinceLastRender()))
-end
+--     self.modList:setYScroll(self.modList:getYScroll() - (diff * 0.02 * UIManager.getMillisSinceLastRender()))
+-- end
 --#endregion
 
 
 function ModLoadOrderPanelOverride:instantiate()
     origInstantiate(self)
-    local panel = self
     print("[MLOS] Layers initialisation STARTED")
-    if self.MLOS_ProgressBar then
-        self.MLOS_ProgressBar:setVisible(true)
-        self.MLOS_ProgressBar:setText("Checking workshop updates...")
-        self.MLOS_ProgressBar:setProgress(0)
-    end
+    -- if self.MLOS_ProgressBar then
+    --     self.MLOS_ProgressBar:setVisible(true)
+    --     self.MLOS_ProgressBar:setText("Checking workshop updates...")
+    --     self.MLOS_ProgressBar:setProgress(0)
+    -- end
     core.layersManager:initialise(self.modList.items, {
         onFilesProgress = function(current, total)
-            if panel.MLOS_ProgressBar then
-                panel.MLOS_ProgressBar:setVisible(true)
-                panel.MLOS_ProgressBar:setText(getText("UI_MLOS_Analysis_Progress", current, total))
-                panel.MLOS_ProgressBar:setProgress(total > 0 and (current / total) or 1)
+            if self.MLOS_ProgressBar then
+                self.MLOS_ProgressBar:setVisible(true)
+                self.MLOS_ProgressBar:setText(getText("UI_MLOS_Analysis_Progress", current, total))
+                self.MLOS_ProgressBar:setProgress(total > 0 and (current / total) or 1)
             end
         end,
         onComplete = function()
             print("[MLOS] Layers initialisation FINISHED")
-            if panel.MLOS_ProgressBar then panel.MLOS_ProgressBar:setVisible(false) end
-            panel:showLayerWarnings()
-            panel:MLOS_refresh()
+            if self.MLOS_ProgressBar then self.MLOS_ProgressBar:setVisible(false) end
+            self:showLayerWarnings()
+            -- self:MLOS_refresh()
         end,
     })
 end
@@ -161,17 +164,29 @@ function ModLoadOrderPanelOverride:autoSort()
         end
     end
     self.modList.selected_map = {}; self.modList.selected_flat = nil
-    self:MLOS_refresh()
+    -- self:MLOS_refresh()
     print("[MLOS] " .. getText("UI_MLOS_SortApplied"))
 end
 
 
+local function onRulesEditorButton(self, button)
+    if not core.layers.sortingRules or not core.layers.modInfo then return end
+
+    local w, h = getCore():getScreenWidth() * .9, getCore():getScreenHeight() * .85
+    local editor = Editor:new((getCore():getScreenWidth()-w)/2, (getCore():getScreenHeight()-h)/2, w, h, self)
+    editor:initialise()
+    editor:instantiate()
+    -- if self.fileTooltip:getIsVisible() then
+    --     self.fileTooltip:setVisible(false)
+    --     self.fileTooltip:removeFromUIManager()
+    -- end
+    self:setVisible(false)
+    editor:addToUIManager()
+    editor:bringToTop()
+end
+
 function ModLoadOrderPanelOverride:createChildren()
     origCreateChildren(self)
-
-    -- FIXES --
-    self:fixMissingModsCrash()
-    self:fixBackButtonJoypadFocus()
 
     -- RESCALE --
     local scrWidth = getCore():getScreenWidth()
@@ -182,6 +197,20 @@ function ModLoadOrderPanelOverride:createChildren()
     self:setWidth(width)
     self:setY((scrHeight - height) * 0.5)
     self:setHeight(height)
+
+    local y_offset = 50
+    local modList_width = width * 0.5 - PADDING * 2
+    local modList_height =  height - (y_offset + PADDING + BUTTON_HGT + PADDING)
+
+    -- ADD NEW FUNCTIONS TO THE MODLIST --
+    scrollExt:initialResacale(self.modList, nil, y_offset, modList_width, modList_height)
+    scrollExt:modListBoxOverrides(self.modList)
+    scrollExt:addTitle(self.modList, "", true, nil) --{r=0.28, g=0.35, b=0.8, a=0.8}
+    scrollExt:addBackground(self.modList, nil, {})
+    scrollExt:addSearchEntry(self.modList, -(self.modList:getAbsoluteY() - self:getAbsoluteY() - y_offset) )
+    scrollExt:addMoveButtons(self.modList)
+    scrollExt:addMultiselectionSupport(self.modList)
+    scrollExt.addAutoscrollWhileDrag(self.modList)
 
     -- NEW UI Elements --
     self.MLOS_ProgressBar = ISProgressBar:new((width * (1 - 0.2)) * 0.5 , self.backButton.y, width * 0.2, BUTTON_HGT, "")
@@ -203,47 +232,73 @@ function ModLoadOrderPanelOverride:createChildren()
     self.warningPopup:ignoreHeightChange()
     self:addChild(self.warningPopup)
 
-    -- ADD NEW FUNCTIONS --
-    scrollExt:initialResacale(self.modList, nil, 50, width * 0.5 - PADDING * 2, height - (50 + PADDING + BUTTON_HGT + PADDING))
-    scrollExt:modListBoxOverrides(self.modList)
-    scrollExt:addTitle(self.modList, "", true, nil) --{r=0.28, g=0.35, b=0.8, a=0.8}
-    scrollExt:addBackground(self.modList, nil, {})
-    scrollExt:addSearchEntry(self.modList, self:getAbsoluteY() + 50 - self.modList:getAbsoluteY() - 3)
-    scrollExt:addMoveButtons(self.modList)
-    scrollExt:addMultiselectionSupport(self.modList)
+    self.rulesEditorButton = ISButton:new(self.autoButton.x - PADDING - BUTTON_HGT, self.autoButton.y, BUTTON_HGT, BUTTON_HGT, "", self, onRulesEditorButton)
+    self.rulesEditorButton:initialise()
+    self.rulesEditorButton:instantiate()
+    self.rulesEditorButton:setAnchorLeft(false)
+    self.rulesEditorButton:setAnchorRight(true)
+    self.rulesEditorButton:setAnchorTop(false)
+    self.rulesEditorButton:setAnchorBottom(true)
+    self.rulesEditorButton:setTooltip("Open Sorting rules editor")
+    self.rulesEditorButton:setImage(getTexture("media/ui/MLOS_Button_Rules.png"))
+    self.rulesEditorButton.isBorderVisible = false
+    self.rulesEditorButton:ignoreWidthChange()
+    self.rulesEditorButton:ignoreHeightChange()
+    self:addChild(self.rulesEditorButton)
 
-    local x = width * 0.5 + PADDING
-    local rightWidth = width - x - PADDING
-    local sortButton = ISButton:new(x, 10, 150, BUTTON_HGT, "Auto sort", self, self.autoSort)
-    sortButton:initialise(); sortButton:instantiate(); self:addChild(sortButton)
-    local editButton = ISButton:new(x + 160, 10, 150, BUTTON_HGT, "Rules editor", self, function(panel)
-        if not core.layers.sortingRules or not core.layers.modInfo then return end
-        local w, h = getCore():getScreenWidth() * .9, getCore():getScreenHeight() * .85
-        local editor = Editor:new((getCore():getScreenWidth()-w)/2, (getCore():getScreenHeight()-h)/2, w, h, panel)
-        editor:initialise(); editor:instantiate()
-        if panel.fileTooltip:getIsVisible() then panel.fileTooltip:setVisible(false); panel.fileTooltip:removeFromUIManager() end
-        panel:setVisible(false)
-        editor:addToUIManager(); editor:bringToTop()
-    end)
-    editButton:initialise(); editButton:instantiate(); self:addChild(editButton)
-    self.conflictFilter = ISTickBox:new(x, 46, rightWidth, 25, "", self, function(panel) panel:MLOS_refresh() end)
-    self.conflictFilter:initialise(); self.conflictFilter:instantiate()
-    self.conflictFilter:addOption("Show conflicts only"); self:addChild(self.conflictFilter)
-    local inspector = ISPanel:new(x, 76, rightWidth, height - 76 - BUTTON_HGT - 20)
-    inspector:initialise(); inspector:instantiate(); self:addChild(inspector)
-    local list = ISScrollingListBox:new(0, 40, rightWidth, inspector.height - 40)
-    list:initialise(); list:instantiate(); list.itemheight = FONT_HGT_SMALL + 8
-    list.doDrawItem = function(box, y, row)
-        local color = row.item.conflict and {1, .65, .2} or {1,1,1}
-        if box.selected == row.index then box:drawRect(0,y,box.width,row.height,.25,.6,.6,.6) end
-        box:drawText(row.text, 4, y+3, color[1],color[2],color[3],1,UIFont.Small)
-        return y + row.height
-    end
-    inspector:addChild(list); self.filesList = list
-    scrollExt:addSearchEntry(list, -40)
-    self.fileTooltip = ISToolTip:new(); self.fileTooltip:setOwner(self)
-    self.fileTooltip:setVisible(false); self.fileTooltip:setAlwaysOnTop(true); self.fileTooltip.followMouse = true
-    scrollExt:addContextMenu(self, self.modList.width - PADDING, 53)
+    local list = scrollExt.createList(self, width * 0.5 + PADDING, y_offset + modList_height * 0.3, modList_width - PADDING, modList_height * 0.7)
+    list.itemheight = FONT_HGT_SMALL + 8
+    self.filesList = list
+    scrollExt:addSearchEntry(self.filesList)
+    scrollExt:addBackground(self.filesList, nil, {})
+
+    local tickBoxText = "Show conflicts only"
+    self.conflictFilter = ISTickBox:new(self.filesList:getRight() - BUTTON_HGT - PADDING - getTextManager():MeasureStringX(UIFont.Small, tickBoxText), self.filesList.searchEntry.y, BUTTON_HGT, BUTTON_HGT, "", self, self.MLOS_refresh)
+    self.conflictFilter:initialise()
+    self.conflictFilter:instantiate()
+    self.conflictFilter:addOption(tickBoxText)
+    self:addChild(self.conflictFilter)
+
+    -- FIXES --
+    self:fixMissingModsCrash()
+    self:fixBackButtonJoypadFocus()
+
+
+
+    -- local x = width * 0.5 + PADDING
+    -- local rightWidth = width - x - PADDING
+    -- local sortButton = ISButton:new(x, 10, 150, BUTTON_HGT, "Auto sort", self, self.autoSort)
+    -- sortButton:initialise(); sortButton:instantiate(); self:addChild(sortButton)
+    -- local editButton = ISButton:new(x + 160, 10, 150, BUTTON_HGT, "Rules editor", self, function(panel)
+    --     if not core.layers.sortingRules or not core.layers.modInfo then return end
+    --     local w, h = getCore():getScreenWidth() * .9, getCore():getScreenHeight() * .85
+    --     local editor = Editor:new((getCore():getScreenWidth()-w)/2, (getCore():getScreenHeight()-h)/2, w, h, panel)
+    --     editor:initialise(); editor:instantiate()
+    --     if panel.fileTooltip:getIsVisible() then panel.fileTooltip:setVisible(false); panel.fileTooltip:removeFromUIManager() end
+    --     panel:setVisible(false)
+    --     editor:addToUIManager(); editor:bringToTop()
+    -- end)
+    -- editButton:initialise(); editButton:instantiate(); self:addChild(editButton)
+
+    
+    -- local inspector = ISPanel:new(x, 76, rightWidth, height - 76 - BUTTON_HGT - 20)
+    -- inspector:initialise(); inspector:instantiate(); self:addChild(inspector)
+    -- local list = ISScrollingListBox:new(0, 40, rightWidth, inspector.height - 40)
+    -- list:initialise(); list:instantiate(); list.itemheight = FONT_HGT_SMALL + 8
+    -- list.doDrawItem = function(box, y, row)
+    --     local color = row.item.conflict and {1, .65, .2} or {1,1,1}
+    --     if box.selected == row.index then box:drawRect(0,y,box.width,row.height,.25,.6,.6,.6) end
+    --     box:drawText(row.text, 4, y+3, color[1],color[2],color[3],1,UIFont.Small)
+    --     return y + row.height
+    -- end
+    -- inspector:addChild(list); self.filesList = list
+    -- scrollExt:addSearchEntry(list, -40)
+
+    -- self.fileTooltip = ISToolTip:new(); self.fileTooltip:setOwner(self)
+    -- self.fileTooltip:setVisible(false); self.fileTooltip:setAlwaysOnTop(true); self.fileTooltip.followMouse = true
+
+
+    scrollExt:addContextMenu(self, self.modList.width - PADDING, self.modList.searchEntry.y)
     scrollExt:addContextMenuOption(self, "Re-scan files", "Rebuild the file analysis cache", function(panel)
         core.layersManager:initialise(panel.modList.items, {
             reread = true,
@@ -256,6 +311,7 @@ function ModLoadOrderPanelOverride:createChildren()
             end
         })
     end)
+
 end
 
 -- Validation and inspector are shared between mouse selection, drag/reorder,

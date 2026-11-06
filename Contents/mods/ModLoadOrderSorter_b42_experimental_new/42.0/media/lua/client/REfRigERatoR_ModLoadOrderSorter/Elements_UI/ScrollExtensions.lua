@@ -293,9 +293,9 @@ function MLOS_ScrollExtensions:addSearchEntry(scrollObject, offset)
     addSearchHighlight(scrollObject)
 
     -- Ctrl+F hotkey support
-    scrollObject:setWantKeyEvents(true)
-    scrollObject.onKeyRelease = onSearchKeyFocus
-    scrollObject.isKeyConsumed = isSearchKeyConsumed
+    scrollParent:setWantKeyEvents(true)
+    scrollParent.onKeyRelease = scrollParent.onKeyRelease or function(slf, key) onSearchKeyFocus(scrollObject, key) end
+    scrollParent.isKeyConsumed = scrollParent.isKeyConsumed or function(slf) isSearchKeyConsumed(scrollObject) end
 
     return searchEntry
 end
