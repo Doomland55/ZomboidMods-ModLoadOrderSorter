@@ -24,6 +24,7 @@ require('REfRigERatoR_ModLoadOrderSorter/Layers/Manager')
 local sortingCore = require('REfRigERatoR_ModLoadOrderSorter/Core/2_SortingCore')
 local scrollExt = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/ScrollExtensions')
 local popup = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/WarningPopup')
+local colorLegend = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/ColorLegend')
 local Editor = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/SortingRulesEditor')
 
 
@@ -249,6 +250,7 @@ function ModLoadOrderPanelOverride:createChildren()
     local list = scrollExt.createList(self, width * 0.5 + PADDING, y_offset + modList_height * 0.3, modList_width - PADDING, modList_height * 0.7)
     list.itemheight = FONT_HGT_SMALL + 8
     self.filesList = list
+    self.colorLegendButton = colorLegend:addButton(self, list.x, y_offset, list.width, BUTTON_HGT)
     scrollExt:addSearchEntry(self.filesList)
     scrollExt:addBackground(self.filesList, nil, {})
     -- Folders only affect this file-inspector view, never the actual mod order.
@@ -340,10 +342,11 @@ end
 function ModLoadOrderPanelOverride:MLOS_refresh()
     if not self.filesList or not core.layers.modInfo then return end
     local status = sortingCore:validate(self.modList.items)
-    local colors = {red={r=.98,g=.2,b=.2}, purple={r=.75,g=.3,b=1}, yellow={r=1,g=.75,b=.2}}
+    local colors = colorLegend.modColors
     for i, row in ipairs(self.modList.items) do
         row.itemindex = i
-        row.color = colors[status[row.item.modId]] or {r=1,g=1,b=1}
+        local color = colors[status[row.item.modId]] or colors.normal
+        row.color = {r=color.r, g=color.g, b=color.b}
     end
     local data = core.layers.modFiles and core.layers.modFiles.data or {}
     local files, targets = {}, {}

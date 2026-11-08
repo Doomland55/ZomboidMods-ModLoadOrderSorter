@@ -5,6 +5,7 @@ require "ISUI/ISComboBox"
 require "ISUI/ISMouseDrag"
 require "REfRigERatoR_ModLoadOrderSorter/Elements_UI/ContextMenu"
 local utils = require('REfRigERatoR_ModLoadOrderSorter/Core/1_Utils')
+local colorLegend = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/ColorLegend')
 
 local MLOS_ScrollExtensions = {}
 
@@ -135,9 +136,9 @@ function MLOS_ScrollExtensions.createList(parent, x, y, width, height)
     list:instantiate()
 
     list.doDrawItem = function(slf, y, item, alt)
-        local color = item.item.conflict and {1, .65, .2} or {1, 1, 1}
+        local color = item.item.conflict and colorLegend.fileConflict or colorLegend.modColors.normal
         if slf.selected == item.index then slf:drawRect(0, y, slf.width, item.height, 0.25, 0.6, 0.6, 0.6) end
-        slf:drawText(item.text, 4, y+3, color[1], color[2], color[3], 1, UIFont.Small)
+        slf:drawText(item.text, 4, y+3, color.r, color.g, color.b, 1, UIFont.Small)
         return y + item.height
     end
     parent:addChild(list)
@@ -215,9 +216,10 @@ local function addSearchHighlight(scrollObject)
 
         if scrollObject.foundCounter > 0 and scrollObject.foundIndex > 0 and scrollObject.foundItems[scrollObject.foundIndex] == item.itemindex then
             scrollObject.foundCounter = scrollObject.foundCounter - 1
-            local alpha = 0.30
+            local color = colorLegend.search
+            local alpha = color.a
             if scrollObject.foundCounter < 80 then alpha = alpha - (alpha * alpha) end
-            slf:drawRect(0, (y), slf:getWidth(), item.height-1, alpha, 0.5, 1, 1)
+            slf:drawRect(0, (y), slf:getWidth(), item.height-1, alpha, color.r, color.g, color.b)
         end
 
         return originalDoDrawItems(slf, y, item, alt)
@@ -609,7 +611,8 @@ local function modListBox_drawOnlyModCard(self, y, item, alt)
     local selected_map = getSelectedItemsDict(self)
 
     if selected_map[item.index] ~= nil then
-        self:drawRect(0, (y), self:getWidth(), item.height-1, 0.3, 0.7, 0.35, 0.15)
+        local color = colorLegend.selection
+        self:drawRect(0, (y), self:getWidth(), item.height-1, color.a, color.r, color.g, color.b)
     end
 
     self:drawRectBorder(0, (y), self:getWidth(), item.height, isMouseOverItem and 1 or 0.5, self.borderColor.r, self.borderColor.g, self.borderColor.b)

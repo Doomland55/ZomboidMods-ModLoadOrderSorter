@@ -82,6 +82,14 @@ MLOS_ContextMenu.close=noop
 _G.next=nil
 local scroll=require(root..'Elements_UI/ScrollExtensions')
 local parent=ISPanelJoypad:new(0,0,500,500)
+local sample=scroll.createList(parent,0,0,400,300)
+local drawn
+sample.drawText=function(_,_,_,_,r,g,b) drawn={r,g,b} end
+sample:doDrawItem(0,{text='file',item={conflict=true},height=24,index=1},false)
+local legend=require(root..'Elements_UI/ColorLegend')
+assert(drawn[1]==legend.fileConflict.r and drawn[2]==legend.fileConflict.g and drawn[3]==legend.fileConflict.b)
+sample:doDrawItem(0,{text='file',item={conflict=false},height=24,index=1},false)
+assert(drawn[1]==legend.modColors.normal.r and drawn[2]==legend.modColors.normal.g and drawn[3]==legend.modColors.normal.b)
 local list=ISScrollingListBox:new(0,0,400,300); parent:addChild(list)
 list:addItem('Alpha.lua',{name='Alpha.lua',modId='a'},'alpha tooltip')
 list:addItem('Beta.lua',{name='Beta.lua',modId='b'},'beta tooltip')

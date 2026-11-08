@@ -117,6 +117,12 @@ core.layers.modFiles.data={A={files={'a.lua'}},B={files={'b.lua'}}}
 panel:MLOS_refresh()
 assert(#panel.filesList.items==1 and panel.filesList.items[1].text=='a.lua')
 panel.modList.selected_map={[2]=true}
+sorter.validate=function() return {A='purple', B='red'} end
 panel:MLOS_refresh()
 assert(#panel.filesList.items==1 and panel.filesList.items[1].text=='b.lua')
+local legend=require(root..'Elements_UI/ColorLegend')
+assert(panel.modList.items[1].color.r==legend.modColors.purple.r and panel.modList.items[1].color.b==legend.modColors.purple.b)
+assert(panel.modList.items[2].color.r==legend.modColors.red.r and panel.modList.items[2].color.g==legend.modColors.red.g)
+panel.modList.items[1].color.r=0
+assert(legend.modColors.purple.r==0.75)
 print('inspector selection tests passed with next unavailable')
