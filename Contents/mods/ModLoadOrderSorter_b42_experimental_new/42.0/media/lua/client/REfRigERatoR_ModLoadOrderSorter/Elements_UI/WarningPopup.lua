@@ -57,11 +57,11 @@ end
 local function listBoxOnMouseUp(self, x, y)
     ISScrollingListBox.onMouseUp(self, x, y)
 
-    local row = self.mouseoverselected
+    local row = self:rowAt(x, y)
     local item = row and self.items[row] or nil
     if item and item.item and item.item.copyText and item.item.copyText ~= "" then
         Clipboard.setClipboard(item.item.copyText)
-        self.copiedFlash = 90 -- show "copied" feedback in the header for ~90 frames
+        if self.parent then self.parent.copiedFlash = 90 end
     end
 end
 
@@ -178,6 +178,7 @@ end
 
 function ModSortWarningPopup:clearWarnings()
     self.listBox:clear()
+    self.copiedFlash = 0
     self:setExpanded(false)
     self:setVisible(false)
 end
@@ -213,7 +214,7 @@ function ModSortWarningPopup:setExpanded(expand)
         self.listBox:setVisible(true)
         self:bringToTop()
     else
-        -- self:hideTooltip()
+        self.copiedFlash = 0
         self:setX(self.anchorX)
         self:setY(self.anchorY)
         self:setWidth(COLLAPSED_SIZE)
@@ -266,7 +267,12 @@ function ModSortWarningPopup:prerender()
     else
         self:drawRect(0, 0, self.width, HEADER_HEIGHT, 1.0, 0.2, 0.12, 0.02)
         self:drawRectBorder(0, 0, self.width, HEADER_HEIGHT, 1.0, 0.9, 0.5, 0.0)
-        self:drawText(self.headerText or "", 10, 7, 1.0, 0.85, 0.2, 1.0, UIFont.Small)
+        if self.copiedFlash and self.copiedFlash > 0 then
+            self:drawText(getText("UI_MLOS_CopiedToClipboard"), 10, 7, 0.55, 0.9, 0.55, 1.0, UIFont.Small)
+            self.copiedFlash = self.copiedFlash - 1
+        else
+            self:drawText(self.headerText or "", 10, 7, 1.0, 0.85, 0.2, 1.0, UIFont.Small)
+        end
     end
 end
 

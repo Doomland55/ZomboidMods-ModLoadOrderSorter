@@ -53,7 +53,7 @@ local core={rawCategoryOrder={'code','undefined'},layers={modInfo={data={
     A={name='A', requirements={'B'},requiredBy={'C'}},B={name='B'},C={name='C'}
 }},modFiles={data={}},sortingRules=rules}}
 local sorter={validate=function() return {} end}
-local scroll={addSearchEntry=function(_, list) list.parent.foundItems={}; list.parent.foundIndex=0 end}
+local scroll={addSearchEntry=function(_, list) list.foundItems={}; list.foundIndex=0; list.foundCounter=0 end}
 local popup={new=function() return {addMessage=noop,addError=noop} end}
 package.loaded[root..'Core/1_Utils']=utils
 package.loaded[root..'Core/Core']=core
@@ -68,8 +68,9 @@ local owner={modList={items={
 }}}
 local editor=Editor:new(0,0,900,600,owner)
 editor:createChildren()
+editor.mods.foundItems={2}; editor.mods.foundIndex=1; editor.mods.foundCounter=3
 editor.mods:onMouseDown(1,0)
-assert(editor.selectedId=='A')
+assert(editor.selectedId=='A' and #editor.mods.foundItems==0 and editor.mods.foundIndex==0 and editor.mods.foundCounter==0)
 editor:toggleMode('loadAfter')
 editor.mods:onMouseDown(2,0)
 assert(editor.selectedId=='A' and editor.mode=='loadAfter' and editor.pending[1]=='B')

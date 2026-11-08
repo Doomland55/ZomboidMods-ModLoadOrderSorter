@@ -35,5 +35,14 @@
     "UI_MLOS_SortApplied": "New load order applied (previous order backed up to loadOrderBackup.txt)",
     "UI_MLOS_ClickToCopy": "click to copy",
     "UI_MLOS_CopiedToClipboard": "Copied to clipboard!",
+    "UI_MLOS_FolderName": "Folder name:",
+    "UI_MLOS_FolderCreate": "Create folder…",
+    "UI_MLOS_FolderRename": "Rename folder…",
+    "UI_MLOS_FolderDelete": "Delete folder (keep files)",
+    "UI_MLOS_FolderMove": "Move to folder",
+    "UI_MLOS_FolderRemoveItems": "Remove from folder",
+    "UI_MLOS_FolderInvalid": "Enter a unique, non-empty name",
+    "UI_MLOS_FolderOK": "OK",
+    "UI_MLOS_FolderCancel": "Cancel",
     "UI_MLOS_OrderHintBroken_Msg": "Order hints (shared files / function hooks) between these mods conflicted with real dependencies and were ignored: %1. The dependencies themselves are satisfied."
 }

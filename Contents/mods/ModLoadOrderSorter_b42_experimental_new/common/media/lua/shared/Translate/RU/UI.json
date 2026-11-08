@@ -35,5 +35,14 @@
     "UI_MLOS_SortApplied": "Новый порядок загрузки применён (прежний порядок сохранён в loadOrderBackup.txt)",
     "UI_MLOS_ClickToCopy": "клик — копировать",
     "UI_MLOS_CopiedToClipboard": "Скопировано в буфер обмена!",
+    "UI_MLOS_FolderName": "Название папки:",
+    "UI_MLOS_FolderCreate": "Создать папку…",
+    "UI_MLOS_FolderRename": "Переименовать папку…",
+    "UI_MLOS_FolderDelete": "Удалить папку (файлы останутся)",
+    "UI_MLOS_FolderMove": "Переместить в папку",
+    "UI_MLOS_FolderRemoveItems": "Убрать из папки",
+    "UI_MLOS_FolderInvalid": "Введите уникальное название",
+    "UI_MLOS_FolderOK": "ОК",
+    "UI_MLOS_FolderCancel": "Отмена",
     "UI_MLOS_OrderHintBroken_Msg": "Подсказки порядка (общие файлы / хуки функций) между этими модами конфликтовали с реальными зависимостями и были проигнорированы: %1. Сами зависимости соблюдены."
 }

@@ -251,6 +251,8 @@ function ModLoadOrderPanelOverride:createChildren()
     self.filesList = list
     scrollExt:addSearchEntry(self.filesList)
     scrollExt:addBackground(self.filesList, nil, {})
+    -- Folders only affect this file-inspector view, never the actual mod order.
+    scrollExt:addFoldersSupport(self.filesList)
 
     local tickBoxText = "Show conflicts only"
     self.conflictFilter = ISTickBox:new(self.filesList:getRight() - BUTTON_HGT - PADDING - getTextManager():MeasureStringX(UIFont.Small, tickBoxText), self.filesList.searchEntry.y, BUTTON_HGT, BUTTON_HGT, "", self, self.MLOS_refresh)
@@ -390,15 +392,17 @@ function ModLoadOrderPanelOverride:MLOS_refresh()
             end
         end
     end
+    local folders = self.filesList.MLOS_folders
+    if folders then folders:beginUpdate() end
     self.filesList:clear()
-    self.filesList.parent.foundItems = {}; self.filesList.parent.foundIndex = 0
+    self.filesList.foundItems = {}; self.filesList.foundIndex = 0
     local names = {}; for name in pairs(union) do names[#names+1] = name end; table.sort(names)
     local only = self.conflictFilter:isSelected(1)
     for _, name in ipairs(names) do
         if not only or union[name].conflict then
             union[name].name = name; union[name].modId = name
             self.filesList:addItem(name, union[name])
-            self.filesList.items[#self.filesList.items].itemindex = #self.filesList.items
         end
     end
+    if folders then folders:endUpdate() end
 end

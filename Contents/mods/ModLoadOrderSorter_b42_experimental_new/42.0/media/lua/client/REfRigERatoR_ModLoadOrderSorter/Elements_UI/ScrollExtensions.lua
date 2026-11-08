@@ -154,13 +154,17 @@ end
 
 
 local function searchItems(scrollObject)
-    if not utils:tableIsEmpty(scrollObject.foundItems) or not scrollObject then return end
+    if not scrollObject or not utils:tableIsEmpty(scrollObject.foundItems) then return end
 
-    local searchWord = string.lower(scrollObject.searchEntry:getInternalText())
-    if not searchWord or searchWord == "" then return end
+    local searchWord = string.lower(scrollObject.searchEntry:getInternalText() or "")
+    if searchWord == "" then return end
+    if scrollObject.MLOS_folders then scrollObject.MLOS_folders:revealMatches(searchWord) end
 
-    for i, item in ipairs(scrollObject.items) do
-        if string.find(string.lower(item.item.name), searchWord) or string.find(string.lower(item.item.modId), searchWord) then
+    for i, row in ipairs(scrollObject.items) do
+        local item = type(row.item) == "table" and row.item or {}
+        local name = tostring(item.name or row.text or ""):lower()
+        local id = tostring(item.modId or ""):lower()
+        if name:find(searchWord, 1, true) or id:find(searchWord, 1, true) then
             table.insert(scrollObject.foundItems, i)
         end
     end
@@ -180,12 +184,14 @@ end
 
 
 local function searchNext(scrollObject)
+    searchItems(scrollObject)
     scrollObject.foundIndex = scrollObject.foundIndex + 1
     getSearchResult(scrollObject)
 end
 
 
 local function searchPrev(scrollObject)
+    searchItems(scrollObject)
     scrollObject.foundIndex = scrollObject.foundIndex - 1
     getSearchResult(scrollObject)
 end
@@ -301,6 +307,14 @@ function MLOS_ScrollExtensions:addSearchEntry(scrollObject, offset)
 end
 
 -- #endregion
+
+
+-- Opt-in view folders. Do not attach them to a load-order list: folder rows
+-- are display-only and must never be passed to the game's mod-order model.
+function MLOS_ScrollExtensions:addFoldersSupport(scrollObject, options)
+    local folders = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/FolderSupport')
+    return folders.attach(scrollObject, options)
+end
 
 
 -- #region ============== Multiselection support ==============

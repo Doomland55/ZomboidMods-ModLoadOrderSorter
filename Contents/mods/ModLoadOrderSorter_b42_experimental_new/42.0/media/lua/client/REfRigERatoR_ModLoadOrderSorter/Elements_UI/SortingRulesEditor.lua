@@ -177,7 +177,7 @@ function Editor:refresh()
     for _, b in ipairs(self.modeButtons) do b.enable = self.selectedId ~= nil end
     self.applyButton.enable = self.mode ~= nil; self.cancelButton.enable = self.mode ~= nil
     self.category.enable = self.selectedId ~= nil; self.first.enable = self.selectedId ~= nil; self.last.enable = self.selectedId ~= nil
-    self.foundItems = {}; self.foundIndex = 0
+    self.mods.foundItems = {}; self.mods.foundIndex = 0; self.mods.foundCounter = 0
 end
 function Editor:simulate()
     local ids = sorter:sort(self.order, self.working)
