@@ -1,22 +1,22 @@
-require "ISUI/ISPanel"
+require "ISUI/ISPanelJoypad"
 require "ISUI/ISScrollingListBox"
 require "ISUI/ISToolTip"
 
-ModSortWarningPopup = ISPanel:derive("ModSortWarningPopup")
+ModSortWarningPopup   = ISPanelJoypad:derive("ModSortWarningPopup")
 
-local COLLAPSED_SIZE = 48
-local EXPANDED_WIDTH = 480
+local COLLAPSED_SIZE  = 48
+local EXPANDED_WIDTH  = 480
 local EXPANDED_HEIGHT = 320
-local HEADER_HEIGHT = 30
-local SCREEN_PADDING = 15
+local HEADER_HEIGHT   = 30
+local SCREEN_PADDING  = 10
 
 -- Заранее знаем максимальную ширину текста:
 -- Ширина окна (480) - отступ слева (14) - скроллбар и отступ справа (22) = 444 пикселя
-local MAX_TEXT_WIDTH = EXPANDED_WIDTH - 36
+local MAX_TEXT_WIDTH  = EXPANDED_WIDTH - 36
 
 -- Заранее созданные цвета (чтобы не создавать таблицы в памяти)
-local COLOR_CRITICAL = {r=0.9, g=0.2, b=0.2}
-local COLOR_WARNING  = {r=0.95, g=0.7, b=0.1}
+local COLOR_CRITICAL  = { r = 0.9, g = 0.2, b = 0.2 }
+local COLOR_WARNING   = { r = 0.95, g = 0.7, b = 0.1 }
 
 -- Быстрая обрезка текста (бинарный поиск + защита UTF-8/кириллицы)
 local function truncateText(text, font, maxWidth)
@@ -53,113 +53,23 @@ local function truncateText(text, font, maxWidth)
     return string.sub(text, 1, bestLen) .. ellipsis, true
 end
 
-function ModSortWarningPopup:new(x, y)
-    local o = ISPanel.new(self, x, y, COLLAPSED_SIZE, COLLAPSED_SIZE)
-    
-    o.anchorX = x
-    o.anchorY = y
-    
-    o.backgroundColor = {r=0.1, g=0.1, b=0.1, a=0.95}
-    o.borderColor = {r=0.9, g=0.5, b=0.0, a=1.0}
-    
-    o.isExpanded = false
-    o.warnings = {}
-    o.moveWithMouse = false
-    
-    o:setVisible(false)
-    return o
-end
 
-function ModSortWarningPopup:createChildren()
-    ISPanel.createChildren(self)
+local function listBoxOnMouseUp(self, x, y)
+    ISScrollingListBox.onMouseUp(self, x, y)
 
-    self.listBox = ISScrollingListBox:new(0, HEADER_HEIGHT, EXPANDED_WIDTH, EXPANDED_HEIGHT - HEADER_HEIGHT)
-    self.listBox:initialise()
-    self.listBox:instantiate()
-    self.listBox.itemheight = 48
-    self.listBox.backgroundColor = {r=0.05, g=0.05, b=0.05, a=0.9}
-    self.listBox.doDrawItem = self.drawWarningItem
-    self.listBox.doRepaintStencil = true
-    self.listBox:setVisible(false)
-    self:addChild(self.listBox)
-
-    -- click on a warning copies its full text to the clipboard
-    local origListBoxOnMouseUp = ISScrollingListBox.onMouseUp
-    self.copiedFlash = 0
-    self.listBox.onMouseUp = function(listBox, x, y)
-        if origListBoxOnMouseUp then origListBoxOnMouseUp(listBox, x, y) end
-        local row = listBox:rowAt(x, y)
-        local item = row and listBox.items[row]
-        if item and item.item and item.item.copyText and item.item.copyText ~= "" then
-            Clipboard.setClipboard(item.item.copyText)
-            self.copiedFlash = 90 -- show "copied" feedback in the header for ~90 frames
-        end
-    end
-
-    self.tooltipUI = ISToolTip:new()
-    self.tooltipUI:setOwner(self)
-    self.tooltipUI:setVisible(false)
-    self.tooltipUI:setAlwaysOnTop(true)
-    self.tooltipUI.maxLineWidth = 420
-end
-
--- Добавление предупреждения: ВСЕ вычисления происходят ровно 1 раз здесь!
-function ModSortWarningPopup:addMessage(title, message, layerName, severity)
-    title = title or "Conflict"
-    message = message or ""
-    layerName = layerName or "Base"
-    severity = severity or "WARNING"
-
-    local fullTitle = string.format("[%s] %s", layerName, title)
-    
-    -- Один раз обрезаем текст под размер окна
-    local displayTitle, isTitleLong = truncateText(fullTitle, UIFont.Small, MAX_TEXT_WIDTH)
-    local displayMessage, isMsgLong = truncateText(message, UIFont.Small, MAX_TEXT_WIDTH)
-    local isLong = isTitleLong or isMsgLong
-
-    -- Один раз определяем цвета и текст для тултипа
-    local isCrit = (severity == "CRITICAL")
-    local colorTag = isCrit and "<RGB:1,0.3,0.3>" or "<RGB:1,0.8,0.2>"
-
-    local warningData = {
-        displayTitle = displayTitle,
-        displayMessage = displayMessage,
-        barColor = isCrit and COLOR_CRITICAL or COLOR_WARNING,
-        isLong = isLong,
-        tooltipName = isLong and fullTitle or nil,
-        tooltipDesc = isLong and (colorTag .. message) or nil,
-        copyText = fullTitle .. "\n" .. message -- full text copied to clipboard on click
-    }
-    
-    table.insert(self.warnings, warningData)
-    self.listBox:addItem(displayTitle, warningData)
-
-    -- Обновляем текст шапки один раз при добавлении
-    self.headerText = string.format("Found problems (%d):", #self.warnings)
-    self.countStr = tostring(#self.warnings)
-
-    if not self:getIsVisible() then
-        self:setVisible(true)
-        self:bringToTop()
+    local row = self.mouseoverselected
+    local item = row and self.items[row] or nil
+    if item and item.item and item.item.copyText and item.item.copyText ~= "" then
+        Clipboard.setClipboard(item.item.copyText)
+        self.copiedFlash = 90 -- show "copied" feedback in the header for ~90 frames
     end
 end
 
 
-function ModSortWarningPopup:addWarning(title, message, layerName)
-    self:addMessage(title, message, layerName, "WARNING")
-end
-
-
-function ModSortWarningPopup:addError(title, message, layerName)
-    self:addMessage(title, message, layerName, "CRITICAL")
-end
-
-
--- Отрисовка элемента списка: ТЕПЕРЬ 0 ВЫЧИСЛЕНИЙ, только чистый рендер!
-function ModSortWarningPopup:drawWarningItem(y, item, alt)
+local function doDrawItem(self, y, item, alt)
     local data = item.item
     local width = self:getWidth()
-    
+
     if self.mouseoverselected == item.index then
         self:drawRect(0, y, width, item.height, 0.25, 0.4, 0.3, 0.1)
     elseif alt then
@@ -183,21 +93,95 @@ function ModSortWarningPopup:drawWarningItem(y, item, alt)
     return y + item.height
 end
 
--- Очистка всех предупреждений
+
+function ModSortWarningPopup:new(x, y)
+    local o = ISPanelJoypad.new(self, x, y, COLLAPSED_SIZE, COLLAPSED_SIZE)
+
+    o.anchorX = x
+    o.anchorY = y
+
+    o.backgroundColor = { r = 0.1, g = 0.1, b = 0.1, a = 0.95 }
+    o.borderColor = { r = 0.9, g = 0.5, b = 0.0, a = 1.0 }
+
+    o.isExpanded = false
+    o.moveWithMouse = false
+
+    o:setVisible(false)
+    return o
+end
+
+function ModSortWarningPopup:createChildren()
+    self.listBox = ISScrollingListBox:new(0, HEADER_HEIGHT, EXPANDED_WIDTH, EXPANDED_HEIGHT - HEADER_HEIGHT)
+    self.listBox:initialise()
+    self.listBox:instantiate()
+    self.listBox.itemheight = 48
+    self.listBox.backgroundColor = { r = 0.05, g = 0.05, b = 0.05, a = 0.9 }
+    self.listBox.doDrawItem = doDrawItem
+    self.listBox.doRepaintStencil = true
+    self.listBox:setVisible(false)
+    self:addChild(self.listBox)
+
+    -- click on a warning copies its full text to the clipboard
+    self.copiedFlash = 0
+    self.listBox.onMouseUp = listBoxOnMouseUp
+end
+
+
+
+-- Добавление предупреждения: ВСЕ вычисления происходят ровно 1 раз здесь!
+function ModSortWarningPopup:addMessage(title, message, layerName, severity)
+    title = title or "Conflict"
+    message = message or ""
+    layerName = layerName or "Base"
+    severity = severity or "WARNING"
+
+    local fullTitle = string.format("[%s] %s", layerName, title)
+
+    -- Один раз обрезаем текст под размер окна
+    local displayTitle, isTitleLong = truncateText(fullTitle, UIFont.Small, MAX_TEXT_WIDTH)
+    local displayMessage, isMsgLong = truncateText(message, UIFont.Small, MAX_TEXT_WIDTH)
+    local isLong = isTitleLong or isMsgLong
+
+    -- Один раз определяем цвета и текст для тултипа
+    local isCrit = (severity == "CRITICAL")
+    local colorTag = isCrit and "<RGB:1,0.3,0.3>" or "<RGB:1,0.8,0.2>"
+
+    local warningData = {
+        displayTitle = displayTitle,
+        displayMessage = displayMessage,
+        barColor = isCrit and COLOR_CRITICAL or COLOR_WARNING,
+        copyText = fullTitle .. "\n" .. message -- full text copied to clipboard on click
+    }
+
+    local tooltip = colorTag .. (isLong and fullTitle or "") .. "<RGB:0.8,0.8,0.8>\n"
+    tooltip = tooltip .. (isLong and message or "")
+
+    self.listBox:addItem(displayTitle, warningData, tooltip)
+
+    self.headerText = string.format("Found problems (%d):", #self.listBox.items)
+    self.countStr = tostring(#self.listBox.items)
+
+    if not self:getIsVisible() then
+        self:setVisible(true)
+        self:bringToTop()
+    end
+end
+
+function ModSortWarningPopup:addWarning(title, message, layerName)
+    self:addMessage(title, message, layerName, "WARNING")
+end
+
+function ModSortWarningPopup:addError(title, message, layerName)
+    self:addMessage(title, message, layerName, "CRITICAL")
+end
+
+
 function ModSortWarningPopup:clearWarnings()
-    self.warnings = {}
     self.listBox:clear()
-    self:hideTooltip()
     self:setExpanded(false)
     self:setVisible(false)
 end
 
-function ModSortWarningPopup:hideTooltip()
-    if self.tooltipUI and self.tooltipUI:getIsVisible() then
-        self.tooltipUI:setVisible(false)
-        self.tooltipUI:removeFromUIManager()
-    end
-end
 
 function ModSortWarningPopup:setExpanded(expand)
     if self.isExpanded == expand then return end
@@ -206,14 +190,14 @@ function ModSortWarningPopup:setExpanded(expand)
     if self.isExpanded then
         self:setWidth(EXPANDED_WIDTH)
         self:setHeight(EXPANDED_HEIGHT)
-        
+
         -- 2. Проверяем границы экрана (или родительского окна), чтобы не вылезти за край
         local maxW = self.parent and self.parent:getWidth() or getCore():getScreenWidth()
         local maxH = self.parent and self.parent:getHeight() or getCore():getScreenHeight()
-        
+
         local newX = self.anchorX
         local newY = self.anchorY
-        
+
         if newX + EXPANDED_WIDTH > maxW - SCREEN_PADDING then
             newX = maxW - EXPANDED_WIDTH - SCREEN_PADDING
         end
@@ -222,25 +206,26 @@ function ModSortWarningPopup:setExpanded(expand)
         end
         if newX < SCREEN_PADDING then newX = SCREEN_PADDING end
         if newY < SCREEN_PADDING then newY = SCREEN_PADDING end
-        
+
         self:setX(newX)
         self:setY(newY)
 
         self.listBox:setVisible(true)
         self:bringToTop()
     else
-        self:hideTooltip()
+        -- self:hideTooltip()
         self:setX(self.anchorX)
         self:setY(self.anchorY)
         self:setWidth(COLLAPSED_SIZE)
         self:setHeight(COLLAPSED_SIZE)
-        
+
         self.listBox:setVisible(false)
     end
 end
 
+
 function ModSortWarningPopup:onMouseUp(x, y)
-    ISPanel.onMouseUp(self, x, y)
+    ISPanelJoypad.onMouseUp(self, x, y)
 
     if not self.isExpanded then
         if x >= 0 and x <= self.width and y >= 0 and y <= self.height then
@@ -253,42 +238,18 @@ function ModSortWarningPopup:onMouseUp(x, y)
     end
 end
 
+
 function ModSortWarningPopup:onMouseDownOutside(x, y)
-    ISPanel.onMouseDownOutside(self, x, y)
-    
+    ISPanelJoypad.onMouseDownOutside(self, x, y)
+
     if self.isExpanded and not self:isMouseOver() then
         self:setExpanded(false)
     end
 end
 
--- Тултип просто берет готовые строки из data
-function ModSortWarningPopup:updateTooltip()
-    if not self.isExpanded or not self.listBox:isMouseOver() then
-        self:hideTooltip()
-        return
-    end
-
-    local row = self.listBox.mouseoverselected
-    if row and row ~= -1 and self.listBox.items[row] then
-        local data = self.listBox.items[row].item
-        if data and data.isLong then
-            self.tooltipUI.name = data.tooltipName
-            self.tooltipUI.description = data.tooltipDesc
-
-            if not self.tooltipUI:getIsVisible() then
-                self.tooltipUI:setVisible(true)
-                self.tooltipUI:addToUIManager()
-                self.tooltipUI.followMouse = true
-            end
-            return
-        end
-    end
-
-    self:hideTooltip()
-end
 
 function ModSortWarningPopup:prerender()
-    ISPanel.prerender(self)
+    ISPanelJoypad.prerender(self)
 
     if not self.isExpanded then
         if self:isMouseOver() then
@@ -300,7 +261,8 @@ function ModSortWarningPopup:prerender()
         self:drawTextCentre("!", COLLAPSED_SIZE / 2, 6, 1.0, 0.85, 0.1, 1.0, UIFont.Large)
 
         self:drawRect(COLLAPSED_SIZE - 22, COLLAPSED_SIZE - 18, 20, 16, 0.95, 0.8, 0.1, 0.1)
-        self:drawTextCentre(self.countStr or "0", COLLAPSED_SIZE - 12, COLLAPSED_SIZE - 17, 1.0, 1.0, 1.0, 1.0, UIFont.Small)
+        self:drawTextCentre(self.countStr or "0", COLLAPSED_SIZE - 12, COLLAPSED_SIZE - 17, 1.0, 1.0, 1.0, 1.0,
+            UIFont.Small)
     else
         self:drawRect(0, 0, self.width, HEADER_HEIGHT, 1.0, 0.2, 0.12, 0.02)
         self:drawRectBorder(0, 0, self.width, HEADER_HEIGHT, 1.0, 0.9, 0.5, 0.0)
@@ -308,11 +270,4 @@ function ModSortWarningPopup:prerender()
     end
 end
 
-
-function ModSortWarningPopup:render()
-    ISPanel.render(self)
-    self:updateTooltip()
-end
-
-
-return  ModSortWarningPopup
+return ModSortWarningPopup
