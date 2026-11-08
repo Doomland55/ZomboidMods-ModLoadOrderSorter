@@ -7,3 +7,6 @@ icon=icon.png
 tags=Interface
 author=REfRigERatoR
 incompatible=ModLoadOrderSorter_b42_experimental,ModLoadOrderSorter_b42
+# Optional: ignored by the game when the ZombieBuddy Java agent is absent.
+javaPkgName=me.refri.mlos
+javaJarFile=media/java/client/MLOSBridge.jar

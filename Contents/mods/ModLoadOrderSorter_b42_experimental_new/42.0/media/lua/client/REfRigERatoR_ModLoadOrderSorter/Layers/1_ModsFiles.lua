@@ -1,10 +1,9 @@
 ---
 --- Layer "ModsFiles": collects the list of lua files of every enabled mod and
 --- analyses them for overwritten/hooked functions.
---- Analysis of file contents is possible only for enabled AND loaded mods
---- (the authoritative list of loaded files comes from getLoadedLua()).
---- Enabled but not loaded mods are reported via self.notLoaded so the UI can
---- show a "reload Lua" warning.
+--- With the optional ZombieBuddy bridge, enabled mods can be read directly
+--- without reloading Lua. Otherwise the existing loaded-mod analysis is used
+--- and enabled but not loaded mods are reported via self.notLoaded.
 --- Because parsing is slow and files rarely change, results are stored in a
 --- text cache file (modsFilesCache.txt). A mod is rescanned only when its
 --- signature (mod.info version + number of lua files) changed or it is
@@ -128,6 +127,7 @@ local function cacheDataToText(modId, data)
 	local lines = {}
 	table.insert(lines, "signature=" .. tostring(data.signature or ""))
 	table.insert(lines, "complete=" .. tostring(data.complete == true))
+	if data.fsSignature then table.insert(lines, "fssignature=" .. data.fsSignature) end
 	if not utils:tableIsEmpty(data.files) then
 		table.insert(lines, "files=" .. table.concat(data.files, ","))
 	end
@@ -150,6 +150,8 @@ local function cacheLineToData(addTo, line)
 	key = key:lower()
 	if key == "signature" then
 		addTo.signature = value
+	elseif key == "fssignature" then
+		addTo.fsSignature = value
 	elseif key == "complete" then
 		addTo.complete = (value == "true")
 	elseif key == "files" then
@@ -199,9 +201,34 @@ end
 --      Lua file parser (overwrites / hooks)
 --================================================
 
-local function parseFileFunctions(modId, filename)
-	local success, reader = pcall(getModFileReader, modId, filename, false)
-	if not success or not reader then return nil end
+local function parseFileFunctions(modId, filename, source)
+    local reader
+    if source ~= nil then
+        local position = 1
+        reader = {
+            readLine = function()
+                if position > #source then return nil end
+                local ending = source:find("[\r\n]", position)
+                local line
+                if ending then
+                    line = source:sub(position, ending - 1)
+                    position = ending + 1
+                    if source:sub(ending, ending) == "\r" and source:sub(position, position) == "\n" then
+                        position = position + 1
+                    end
+                else
+                    line = source:sub(position)
+                    position = #source + 1
+                end
+                return line
+            end,
+            close = function() end,
+        }
+    else
+        local success
+        success, reader = pcall(getModFileReader, modId, filename, false)
+        if not success or not reader then return nil end
+    end
 
 	local declaredTables = {}   -- real table literals: "X = {"
 	local aliasMap = {}         -- localName -> resolved dotted target ("A.B.C") or "require:<path>"
@@ -367,11 +394,26 @@ local function indexFileTargets(data)
     end
 end
 
+-- Keep output records identical for the legacy and ZombieBuddy readers.
+local function appendModifications(result, filename, functions)
+    for _, funcInfo in ipairs(functions) do
+        table.insert(result, {
+            file = filename,
+            className = funcInfo.className,
+            methodName = funcInfo.methodName,
+            fullTarget = funcInfo.className .. (funcInfo.separator or ":") .. funcInfo.methodName,
+            alias = funcInfo.alias,
+            line = funcInfo.line,
+            isHook = funcInfo.isHook
+        })
+    end
+end
+
 --- Main entry point.
 ---@param modsList table list of mod list items (modList.items)
 ---@param opts table|nil { reread=bool, onProgress=func(cur,total), onComplete=func(data) }
 ---@return table self.data
-function MLOS_ModsFiles:getData(modsList, opts)
+function MLOS_ModsFiles:getLegacyData(modsList, opts)
 	opts = opts or {}
 	if not modsList then return self.data end
 
@@ -438,6 +480,7 @@ function MLOS_ModsFiles:getData(modsList, opts)
 					-- cache is up to date: use it as is, no rescan needed
 					self.data[modId] = {
 						rootDir = cached.rootDir or dir,
+						fsSignature = cached.fsSignature,
 						files = cached.files or files,
 						modifications = cached.modifications or {},
 						signature = signature,
@@ -486,9 +529,176 @@ function MLOS_ModsFiles:getData(modsList, opts)
 end
 
 
+-- Older caches have no filesystem fingerprint. They are reusable only if their
+-- complete file list matches the bridge snapshot and the normal signature matches.
+local function sameFiles(a, b)
+    if not a then return #b == 0 end
+    if #a ~= #b then return false end
+    local seen = {}
+    for _, name in ipairs(a) do seen[name] = (seen[name] or 0) + 1 end
+    for _, name in ipairs(b) do
+        if not seen[name] or seen[name] == 0 then return false end
+        seen[name] = seen[name] - 1
+    end
+    return true
+end
+
+local function buddyAvailable()
+    return type(MLOS_BuddyBegin) == "function" and type(MLOS_BuddyState) == "function"
+        and type(MLOS_BuddyCount) == "function" and type(MLOS_BuddyPath) == "function"
+        and type(MLOS_BuddySource) == "function" and type(MLOS_BuddyFingerprint) == "function"
+        and type(MLOS_BuddyRelease) == "function"
+end
+
+function MLOS_ModsFiles:releaseBuddyJob()
+    if self.buddyJob then
+        pcall(MLOS_BuddyRelease, self.buddyJob)
+        self.buddyJob = nil
+    end
+end
+
+-- One mod at a time keeps the bridge snapshot bounded. Disk enumeration and
+-- reads run on its daemon worker; the existing parser still yields on FE ticks.
+function MLOS_ModsFiles:getBuddyData(modsList, opts)
+    opts = opts or {}
+    if opts.reread == true or self.cache == nil then self.cache = self:readCache() end
+    local cache = self.cache or {}
+    local data, stale, incomplete = {}, {}, {}
+    local loadedDirs = getLoadedModDirs()
+    local failedMod
+    self.isAnalyzing = true
+    self.progress = { current = 0, total = #modsList }
+    local worker = coroutine.create(function()
+        for i, entry in ipairs(modsList) do
+            local item = entry.item
+            if item then
+                local modId = item.modId
+                failedMod = modId
+                local id = MLOS_BuddyBegin(modId)
+                self.buddyJob = id
+                local state = id and MLOS_BuddyState(id) or "error"
+                while state == "pending" do
+                    coroutine.yield()
+                    state = MLOS_BuddyState(id)
+                end
+                local signature = getModSignature(modId, item.modInfo)
+                local cached = cache[modId]
+                if self.steamUnavailable and cached and cached.signature then
+                    local oldTime = cached.signature:match("|([^|]*)$")
+                    if oldTime then signature = signature:gsub("|[^|]*$", "|" .. oldTime) end
+                end
+                if state ~= "ready" then
+                    -- Preserve useful legacy data, but never treat a failed disk
+                    -- enumeration as a complete or empty mod.
+                    print("[MLOS] ZombieBuddy scan failed for " .. tostring(modId) .. "; using legacy data")
+                    self:releaseBuddyJob()
+                    local dir = item.modInfo:getDir()
+                    local loadedFiles = dir and listLoadedModFiles(modId, dir, item.modInfo, loadedDirs) or {}
+                    local paths = #loadedFiles > 0 and loadedFiles or self:listModLuaFiles(modId)
+                    local result = {
+                        rootDir = dir, files = paths, signature = signature, complete = false,
+                        modifications = (cached and cached.modifications) or {},
+                    }
+                    data[modId] = result
+                    incomplete[#incomplete + 1] = modId
+                    stale[#stale + 1] = modId
+                    if #loadedFiles > 0 then
+                        result.modifications = {}
+                        for n, path in ipairs(loadedFiles) do
+                            local found = parseFileFunctions(modId, path)
+                            if found then appendModifications(result.modifications, path, found) end
+                            if n % FILES_PER_FRAME == 0 then coroutine.yield() end
+                        end
+                    end
+                else
+                    local count = MLOS_BuddyCount(id)
+                    local fingerprint = MLOS_BuddyFingerprint(id)
+                    if type(count) ~= "number" or count < 0 or type(fingerprint) ~= "string" then
+                        error("invalid bridge result for " .. tostring(modId))
+                    end
+                    local paths = {}
+                    for n = 0, count - 1 do
+                        local path = MLOS_BuddyPath(id, n)
+                        if type(path) ~= "string" then error("invalid bridge path") end
+                        paths[#paths + 1] = path
+                        if (n + 1) % 100 == 0 then coroutine.yield() end
+                    end
+                    local fresh = cached and cached.complete == true and cached.signature == signature
+                        and sameFiles(cached.files, paths)
+                        and (not cached.fsSignature or cached.fsSignature == fingerprint)
+                    local result = {
+                        rootDir = item.modInfo:getDir(), files = paths,
+                        modifications = fresh and count > 0 and (cached.modifications or {}) or {},
+                        signature = signature, fsSignature = fingerprint, complete = false,
+                    }
+                    data[modId] = result
+                    if not fresh then
+                        stale[#stale + 1] = modId
+                        for n = 0, count - 1 do
+                            local source = MLOS_BuddySource(id, n)
+                            if type(source) ~= "string" then error("invalid bridge source") end
+                            local found = parseFileFunctions(modId, paths[n + 1], source)
+                            if not found then error("failed to parse " .. paths[n + 1]) end
+                            appendModifications(result.modifications, paths[n + 1], found)
+                            if (n + 1) % FILES_PER_FRAME == 0 then coroutine.yield() end
+                        end
+                    end
+                    result.complete = true
+                    self:releaseBuddyJob()
+                end
+                failedMod = nil
+            end
+            self.progress.current = i
+            if opts.onProgress then opts.onProgress(i, #modsList) end
+            coroutine.yield()
+        end
+    end)
+    local function onTick()
+        local ok, err = coroutine.resume(worker)
+        if not ok or coroutine.status(worker) == "dead" then
+            Events.OnFETick.Remove(onTick)
+            self.tickHandler = nil
+            self.isAnalyzing = false
+            self:releaseBuddyJob()
+            if not ok then
+                print("[MLOS] ZombieBuddy analysis unavailable, using legacy analysis: " .. tostring(err))
+                local fallbackOpts = {
+                    reread = false, onProgress = opts.onProgress,
+                    onComplete = function(result)
+                        -- A failed bridge scan must never become a successful empty scan.
+                        if failedMod and result[failedMod] then
+                            result[failedMod].complete = false
+                            local warned = false
+                            for _, modId in ipairs(self.notLoaded) do if modId == failedMod then warned = true end end
+                            if not warned then self.notLoaded[#self.notLoaded + 1] = failedMod end
+                            self:saveCache()
+                        end
+                        if opts.onComplete then opts.onComplete(result) end
+                    end,
+                }
+                self:getLegacyData(modsList, fallbackOpts)
+            else
+                self.data, self.notLoaded, self.staleMods = data, incomplete, stale
+                indexFileTargets(self.data)
+                self:saveCache()
+                if opts.onComplete then opts.onComplete(self.data) end
+            end
+        end
+    end
+    self.tickHandler = onTick
+    Events.OnFETick.Add(onTick)
+    return self.data
+end
+
+function MLOS_ModsFiles:getData(modsList, opts)
+    if modsList and buddyAvailable() then return self:getBuddyData(modsList, opts) end
+    return self:getLegacyData(modsList, opts)
+end
+
 -- Steam details are asynchronous. On failure reuse cached timestamps rather
 -- than invalidating every entry; local signatures still detect obvious edits.
 function MLOS_ModsFiles:queryAndGetData(modsList, opts)
+    self:releaseBuddyJob()
     if self.tickHandler then Events.OnFETick.Remove(self.tickHandler); self.tickHandler = nil end
     self.isAnalyzing = false
     self.requestGeneration = (self.requestGeneration or 0) + 1
@@ -561,17 +771,7 @@ function MLOS_ModsFiles:startAsyncAnalysis(queue, onProgress, onComplete)
             if not funcsModified then result[task.modId].failed = true end
 			if funcsModified and #funcsModified > 0 then
 				local data = result[task.modId]
-				for _, funcInfo in ipairs(funcsModified) do
-					table.insert(data.modifications, {
-						file = task.relPath,
-						className = funcInfo.className,
-						methodName = funcInfo.methodName,
-						fullTarget = funcInfo.className .. (funcInfo.separator or ":") .. funcInfo.methodName,
-						alias = funcInfo.alias,
-						line = funcInfo.line,
-						isHook = funcInfo.isHook -- true: safe hook, false: full overwrite
-					})
-				end
+				appendModifications(data.modifications, task.relPath, funcsModified)
 			end
 
 			-- yield control back to the game every FILES_PER_FRAME files
