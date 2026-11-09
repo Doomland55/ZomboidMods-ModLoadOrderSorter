@@ -5,7 +5,8 @@ require "ISUI/ISComboBox"
 require "ISUI/ISMouseDrag"
 require "REfRigERatoR_ModLoadOrderSorter/Elements_UI/ContextMenu"
 local utils = require('REfRigERatoR_ModLoadOrderSorter/Core/1_Utils')
-local colorLegend = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/ColorLegend')
+local core = require('REfRigERatoR_ModLoadOrderSorter/Core/Core')
+
 
 local MLOS_ScrollExtensions = {}
 
@@ -135,9 +136,12 @@ function MLOS_ScrollExtensions.createList(parent, x, y, width, height)
     list:initialise()
     list:instantiate()
 
+    local colors = core.COLORS
     list.doDrawItem = function(slf, y, item, alt)
-        local color = item.item.conflict and colorLegend.fileConflict or colorLegend.modColors.normal
-        if slf.selected == item.index then slf:drawRect(0, y, slf.width, item.height, 0.25, 0.6, 0.6, 0.6) end
+        local color = item.item.conflict and colors.fileConflict or colors.reset
+        if slf.selected == item.index then 
+            slf:drawRect(0, y, slf.width, item.height, 0.25, 0.6, 0.6, 0.6) 
+        end
         slf:drawText(item.text, 4, y+3, color.r, color.g, color.b, 1, UIFont.Small)
         return y + item.height
     end
@@ -216,7 +220,7 @@ local function addSearchHighlight(scrollObject)
 
         if scrollObject.foundCounter > 0 and scrollObject.foundIndex > 0 and scrollObject.foundItems[scrollObject.foundIndex] == item.itemindex then
             scrollObject.foundCounter = scrollObject.foundCounter - 1
-            local color = colorLegend.search
+            local color = core.COLORS.search
             local alpha = color.a
             if scrollObject.foundCounter < 80 then alpha = alpha - (alpha * alpha) end
             slf:drawRect(0, (y), slf:getWidth(), item.height-1, alpha, color.r, color.g, color.b)
@@ -611,7 +615,7 @@ local function modListBox_drawOnlyModCard(self, y, item, alt)
     local selected_map = getSelectedItemsDict(self)
 
     if selected_map[item.index] ~= nil then
-        local color = colorLegend.selection
+        local color = core.COLORS.selection
         self:drawRect(0, (y), self:getWidth(), item.height-1, color.a, color.r, color.g, color.b)
     end
 
@@ -807,27 +811,27 @@ end
 -- ScrollObject.parent: -
 -- ============================================================
 
-local function MLOS_ContextMenuOnButton(slf, button)
-    if slf.MLOS_ContextMenus == nil then return end
+local function MLOS_ContextMenuOnButton(target, button)
+    if button.MLOS_ContextMenus == nil then return end
 
-    if slf.MLOS_activeContextMenu and slf.MLOS_activeContextMenu:isReallyVisible() then
-        slf.MLOS_activeContextMenu:close()
-        slf.MLOS_activeContextMenu = nil
+    if target.MLOS_activeContextMenu and target.MLOS_activeContextMenu:isReallyVisible() then
+        target.MLOS_activeContextMenu:close()
+        target.MLOS_activeContextMenu = nil
     end
 
-    local context = MLOS_ContextMenu:new(slf:getAbsoluteX() + button:getRight(), slf:getAbsoluteY() + button.y)
-    slf.MLOS_activeContextMenu = context
+    local context = MLOS_ContextMenu:new(target:getAbsoluteX() + button:getRight(), target:getAbsoluteY() + button.y)
+    target.MLOS_activeContextMenu = context
 
-    for _, entry in ipairs(slf.MLOS_ContextMenus) do
+    for _, entry in ipairs(button.MLOS_ContextMenus) do
             local title = entry.name
             if type(title) == "function" then
-                title = title(slf)
+                title = title(target)
             end
 
             context:addOption(
                 title,
                 entry.tooltip,
-                slf,
+                target,
                 entry.menuFunction
             )
         end
@@ -835,28 +839,37 @@ local function MLOS_ContextMenuOnButton(slf, button)
         context:display()
 end
 
-function MLOS_ScrollExtensions:addContextMenuOption(slf, name, tooltip, func)
-    if not slf or not slf.MLOS_contextMenuButton then return end
-    
-    slf.MLOS_ContextMenus[#slf.MLOS_ContextMenus + 1] = {
+function MLOS_ScrollExtensions:addContextMenuOption(contextMenuBtn, name, tooltip, func)
+    if not contextMenuBtn or not contextMenuBtn.MLOS_ContextMenus then return end
+
+    contextMenuBtn.MLOS_ContextMenus[#contextMenuBtn.MLOS_ContextMenus + 1] = {
         name = name,
         tooltip = tooltip,
         menuFunction = func
     }
 end
 
-function MLOS_ScrollExtensions:addContextMenu(slf, x, y, tooltip)
-    if not slf or slf.MLOS_ContextMenus or slf.MLOS_contextMenuButton then return end
+---comment
+---@param target any
+---@param x any
+---@param y any
+---@param tooltip any
+---@return ISButton
+function MLOS_ScrollExtensions:addContextMenu(target, x, y, tooltip)
+    if not target then return end
 
-    slf.MLOS_ContextMenus = {}
+    local contextMenuBtn = ISButton:new(x, y, BUTTON_HGT, BUTTON_HGT, nil, target, MLOS_ContextMenuOnButton)
+    contextMenuBtn:initialise()
+    contextMenuBtn:instantiate()
+    contextMenuBtn:setTooltip(tooltip)
+    contextMenuBtn:ignoreWidthChange()
+    contextMenuBtn:ignoreHeightChange()
+    contextMenuBtn.isBorderVisible = false
+    contextMenuBtn:setTextureRGBA(1.0, 1.0, 1.0, 0.8)
+    contextMenuBtn:setImage(getTexture("media/ui/MLOS_menu_vertical_dots.png"))
 
-    slf.MLOS_contextMenuButton = ISButton:new(x, y, BUTTON_HGT * 1.2, BUTTON_HGT * 1.2, "=", slf, MLOS_ContextMenuOnButton)
-    slf.MLOS_contextMenuButton:initialise()
-    slf.MLOS_contextMenuButton:instantiate()
-    slf.MLOS_contextMenuButton:setTooltip(tooltip)
-    slf.MLOS_contextMenuButton:ignoreWidthChange()
-    slf.MLOS_contextMenuButton:ignoreHeightChange()
-    slf:addChild(slf.MLOS_contextMenuButton)
+    contextMenuBtn.MLOS_ContextMenus = {}
+    return contextMenuBtn
 end
 -- #endregion
 

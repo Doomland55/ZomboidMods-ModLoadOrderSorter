@@ -24,8 +24,7 @@ require('REfRigERatoR_ModLoadOrderSorter/Layers/Manager')
 local sortingCore = require('REfRigERatoR_ModLoadOrderSorter/Core/2_SortingCore')
 local scrollExt = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/ScrollExtensions')
 local popup = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/WarningPopup')
-local colorLegend = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/ColorLegend')
-local Editor = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/SortingRulesEditor')
+local srEditor = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/SortingRulesEditor')
 
 
 local FONT_HGT_SMALL = getTextManager():getFontHeight(UIFont.Small)
@@ -173,18 +172,14 @@ end
 local function onRulesEditorButton(self, button)
     if not core.layers.sortingRules or not core.layers.modInfo then return end
 
-    local w, h = getCore():getScreenWidth() * .9, getCore():getScreenHeight() * .85
-    local editor = Editor:new((getCore():getScreenWidth()-w)/2, (getCore():getScreenHeight()-h)/2, w, h, self)
+    local editor = srEditor:new(self.x, self.y, self.width, self.height, self)
     editor:initialise()
     editor:instantiate()
-    -- if self.fileTooltip:getIsVisible() then
-    --     self.fileTooltip:setVisible(false)
-    --     self.fileTooltip:removeFromUIManager()
-    -- end
-    self:setVisible(false)
     editor:addToUIManager()
     editor:bringToTop()
+    self:setVisible(false)
 end
+
 
 function ModLoadOrderPanelOverride:createChildren()
     origCreateChildren(self)
@@ -192,7 +187,7 @@ function ModLoadOrderPanelOverride:createChildren()
     -- RESCALE --
     local scrWidth = getCore():getScreenWidth()
     local scrHeight = getCore():getScreenHeight()
-    local width = scrWidth * 0.8
+    local width = scrWidth * 0.9
     local height = scrHeight * 0.9
     self:setX((scrWidth - width) * 0.5)
     self:setWidth(width)
@@ -213,7 +208,34 @@ function ModLoadOrderPanelOverride:createChildren()
     scrollExt:addMultiselectionSupport(self.modList)
     scrollExt.addAutoscrollWhileDrag(self.modList)
 
+    local contextMenuBtn = scrollExt:addContextMenu(self, self.modList.width, self.modList.searchEntry.y)
+    self:addChild(contextMenuBtn)
+
     -- NEW UI Elements --
+    local colorsLegendBtn = ISButton:new(contextMenuBtn.x - PADDING - BUTTON_HGT, contextMenuBtn.y, BUTTON_HGT, BUTTON_HGT)
+    colorsLegendBtn:initialise()
+    colorsLegendBtn:instantiate()
+    colorsLegendBtn.internal = 'LEGEND'
+    colorsLegendBtn:setTextureRGBA(1.0, 1.0, 1.0, 0.8)
+    colorsLegendBtn:setImage(getTexture("media/ui/MLOS_question_mark.png"))
+    colorsLegendBtn:setTooltip(core:getColosLegendTooltip())
+    colorsLegendBtn.isBorderVisible = false
+    colorsLegendBtn:ignoreWidthChange()
+    colorsLegendBtn:ignoreHeightChange()
+    self:addChild(colorsLegendBtn)
+
+    local infoBtn = ISButton:new(width - PADDING - BUTTON_HGT, PADDING, BUTTON_HGT, BUTTON_HGT)
+    infoBtn:initialise()
+    infoBtn:instantiate()
+    infoBtn.internal = 'INFO'
+    infoBtn:setTooltip(getText("UI_MLOS_Info_Msg"))
+    infoBtn:setTextureRGBA(1.0, 1.0, 1.0, 0.8)
+    infoBtn:setImage(getTexture("media/ui/MLOS_question_mark.png"))
+    infoBtn.isBorderVisible = false
+    infoBtn:ignoreWidthChange()
+    infoBtn:ignoreHeightChange()
+    self:addChild(infoBtn)
+
     self.MLOS_ProgressBar = ISProgressBar:new((width * (1 - 0.2)) * 0.5 , self.backButton.y, width * 0.2, BUTTON_HGT, "")
     self.MLOS_ProgressBar:setVisible(false)
     self.MLOS_ProgressBar:setAnchorLeft(true)
@@ -224,7 +246,7 @@ function ModLoadOrderPanelOverride:createChildren()
     self.MLOS_ProgressBar:ignoreHeightChange()
     self:addChild(self.MLOS_ProgressBar)
 
-    self.warningPopup = popup:new(width - 48 - PADDING, PADDING)
+    self.warningPopup = popup:new(infoBtn.x - 48 - PADDING, PADDING)
     self.warningPopup:setAnchorLeft(true)
     self.warningPopup:setAnchorRight(false)
     self.warningPopup:setAnchorTop(true)
@@ -250,11 +272,10 @@ function ModLoadOrderPanelOverride:createChildren()
     local list = scrollExt.createList(self, width * 0.5 + PADDING, y_offset + modList_height * 0.3, modList_width - PADDING, modList_height * 0.7)
     list.itemheight = FONT_HGT_SMALL + 8
     self.filesList = list
-    self.colorLegendButton = colorLegend:addButton(self, list.x, y_offset, list.width, BUTTON_HGT)
     scrollExt:addSearchEntry(self.filesList)
     scrollExt:addBackground(self.filesList, nil, {})
-    -- Folders only affect this file-inspector view, never the actual mod order.
-    scrollExt:addFoldersSupport(self.filesList)
+    -- -- Folders only affect this file-inspector view, never the actual mod order.
+    -- scrollExt:addFoldersSupport(self.filesList)
 
     local tickBoxText = "Show conflicts only"
     self.conflictFilter = ISTickBox:new(self.filesList:getRight() - BUTTON_HGT - PADDING - getTextManager():MeasureStringX(UIFont.Small, tickBoxText), self.filesList.searchEntry.y, BUTTON_HGT, BUTTON_HGT, "", self, self.MLOS_refresh)
@@ -267,43 +288,8 @@ function ModLoadOrderPanelOverride:createChildren()
     self:fixMissingModsCrash()
     self:fixBackButtonJoypadFocus()
 
-
-
-    -- local x = width * 0.5 + PADDING
-    -- local rightWidth = width - x - PADDING
-    -- local sortButton = ISButton:new(x, 10, 150, BUTTON_HGT, "Auto sort", self, self.autoSort)
-    -- sortButton:initialise(); sortButton:instantiate(); self:addChild(sortButton)
-    -- local editButton = ISButton:new(x + 160, 10, 150, BUTTON_HGT, "Rules editor", self, function(panel)
-    --     if not core.layers.sortingRules or not core.layers.modInfo then return end
-    --     local w, h = getCore():getScreenWidth() * .9, getCore():getScreenHeight() * .85
-    --     local editor = Editor:new((getCore():getScreenWidth()-w)/2, (getCore():getScreenHeight()-h)/2, w, h, panel)
-    --     editor:initialise(); editor:instantiate()
-    --     if panel.fileTooltip:getIsVisible() then panel.fileTooltip:setVisible(false); panel.fileTooltip:removeFromUIManager() end
-    --     panel:setVisible(false)
-    --     editor:addToUIManager(); editor:bringToTop()
-    -- end)
-    -- editButton:initialise(); editButton:instantiate(); self:addChild(editButton)
-
-    
-    -- local inspector = ISPanel:new(x, 76, rightWidth, height - 76 - BUTTON_HGT - 20)
-    -- inspector:initialise(); inspector:instantiate(); self:addChild(inspector)
-    -- local list = ISScrollingListBox:new(0, 40, rightWidth, inspector.height - 40)
-    -- list:initialise(); list:instantiate(); list.itemheight = FONT_HGT_SMALL + 8
-    -- list.doDrawItem = function(box, y, row)
-    --     local color = row.item.conflict and {1, .65, .2} or {1,1,1}
-    --     if box.selected == row.index then box:drawRect(0,y,box.width,row.height,.25,.6,.6,.6) end
-    --     box:drawText(row.text, 4, y+3, color[1],color[2],color[3],1,UIFont.Small)
-    --     return y + row.height
-    -- end
-    -- inspector:addChild(list); self.filesList = list
-    -- scrollExt:addSearchEntry(list, -40)
-
-    -- self.fileTooltip = ISToolTip:new(); self.fileTooltip:setOwner(self)
-    -- self.fileTooltip:setVisible(false); self.fileTooltip:setAlwaysOnTop(true); self.fileTooltip.followMouse = true
-
-
-    scrollExt:addContextMenu(self, self.modList.width - PADDING, self.modList.searchEntry.y)
-    scrollExt:addContextMenuOption(self, "Re-scan files", "Rebuild the file analysis cache", function(panel)
+    -- CONTEXT MENU ITEMS --
+    scrollExt:addContextMenuOption(contextMenuBtn, "Re-scan files", "Rebuild the file analysis cache", function(panel)
         core.layersManager:initialise(panel.modList.items, {
             reread = true,
             onFilesProgress = function(n, total)
@@ -315,6 +301,10 @@ function ModLoadOrderPanelOverride:createChildren()
             end
         })
     end)
+
+    -- self.fileTooltip = ISToolTip:new(); self.fileTooltip:setOwner(self)
+    -- self.fileTooltip:setVisible(false); self.fileTooltip:setAlwaysOnTop(true); self.fileTooltip.followMouse = true
+
 
 end
 
@@ -339,13 +329,14 @@ function ModLoadOrderPanelOverride:MLOS_updateView()
     end
 end
 
+
 function ModLoadOrderPanelOverride:MLOS_refresh()
     if not self.filesList or not core.layers.modInfo then return end
     local status = sortingCore:validate(self.modList.items)
-    local colors = colorLegend.modColors
+    local colors = core.COLORS
     for i, row in ipairs(self.modList.items) do
         row.itemindex = i
-        local color = colors[status[row.item.modId]] or colors.normal
+        local color = colors[status[row.item.modId]] or colors.reset
         row.color = {r=color.r, g=color.g, b=color.b}
     end
     local data = core.layers.modFiles and core.layers.modFiles.data or {}

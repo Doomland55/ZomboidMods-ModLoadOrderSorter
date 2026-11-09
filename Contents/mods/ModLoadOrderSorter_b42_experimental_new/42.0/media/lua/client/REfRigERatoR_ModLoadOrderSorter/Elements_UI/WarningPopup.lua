@@ -1,6 +1,7 @@
 require "ISUI/ISPanelJoypad"
 require "ISUI/ISScrollingListBox"
 require "ISUI/ISToolTip"
+local scrollExt       = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/ScrollExtensions')
 
 ModSortWarningPopup   = ISPanelJoypad:derive("ModSortWarningPopup")
 
@@ -10,13 +11,17 @@ local EXPANDED_HEIGHT = 320
 local HEADER_HEIGHT   = 30
 local SCREEN_PADDING  = 10
 
+local hint            = getText("UI_MLOS_ClickToCopy")
+local hintW           = getTextManager():MeasureStringX(UIFont.Small, hint)
+
+
 -- Заранее знаем максимальную ширину текста:
 -- Ширина окна (480) - отступ слева (14) - скроллбар и отступ справа (22) = 444 пикселя
-local MAX_TEXT_WIDTH  = EXPANDED_WIDTH - 36
+local MAX_TEXT_WIDTH = EXPANDED_WIDTH - 36
 
 -- Заранее созданные цвета (чтобы не создавать таблицы в памяти)
-local COLOR_CRITICAL  = { r = 0.9, g = 0.2, b = 0.2 }
-local COLOR_WARNING   = { r = 0.95, g = 0.7, b = 0.1 }
+local COLOR_CRITICAL = { r = 0.9, g = 0.2, b = 0.2 }
+local COLOR_WARNING  = { r = 0.95, g = 0.7, b = 0.1 }
 
 -- Быстрая обрезка текста (бинарный поиск + защита UTF-8/кириллицы)
 local function truncateText(text, font, maxWidth)
@@ -85,9 +90,8 @@ local function doDrawItem(self, y, item, alt)
 
     -- hint: click to copy
     if self.mouseoverselected == item.index then
-        local hint = getText("UI_MLOS_ClickToCopy")
-        local hintW = getTextManager():MeasureStringX(UIFont.Small, hint)
-        self:drawText(hint, width - hintW - 8, y + 5, 0.55, 0.85, 0.55, 1.0, UIFont.Small)
+        self:drawRect(width - hintW - 20, y + 5, hintW + 8, item.height * 0.4, 0.9, 0.15, 0.15, 0.15)
+        self:drawText(hint, width - hintW - 16, y + 5, 0.55, 0.85, 0.55, 1.0, UIFont.Small)
     end
 
     return y + item.height
@@ -124,9 +128,15 @@ function ModSortWarningPopup:createChildren()
     -- click on a warning copies its full text to the clipboard
     self.copiedFlash = 0
     self.listBox.onMouseUp = listBoxOnMouseUp
+
+    scrollExt:addItemContextMenu(self.listBox, "Clear", nil, function(slf) self:clearWarnings() end)
+    scrollExt:addItemContextMenu(self.listBox, "Copy all", nil, function(slf)
+        local lines = {}; for i = 1, #slf.items do lines[i] = slf.items[i].item.copyText end
+        local res = table.concat(lines, "\n")
+        Clipboard.setClipboard(res)
+        if self.parent then self.parent.copiedFlash = 90 end
+    end)
 end
-
-
 
 -- Добавление предупреждения: ВСЕ вычисления происходят ровно 1 раз здесь!
 function ModSortWarningPopup:addMessage(title, message, layerName, severity)
@@ -156,7 +166,7 @@ function ModSortWarningPopup:addMessage(title, message, layerName, severity)
     local tooltip = colorTag .. (isLong and fullTitle or "") .. "<RGB:0.8,0.8,0.8>\n"
     tooltip = tooltip .. (isLong and message or "")
 
-    self.listBox:addItem(displayTitle, warningData, tooltip)
+    self.listBox:addItem(displayTitle, warningData, isLong and tooltip or nil)
 
     self.headerText = string.format("Found problems (%d):", #self.listBox.items)
     self.countStr = tostring(#self.listBox.items)
@@ -175,14 +185,12 @@ function ModSortWarningPopup:addError(title, message, layerName)
     self:addMessage(title, message, layerName, "CRITICAL")
 end
 
-
 function ModSortWarningPopup:clearWarnings()
     self.listBox:clear()
     self.copiedFlash = 0
     self:setExpanded(false)
     self:setVisible(false)
 end
-
 
 function ModSortWarningPopup:setExpanded(expand)
     if self.isExpanded == expand then return end
@@ -224,7 +232,6 @@ function ModSortWarningPopup:setExpanded(expand)
     end
 end
 
-
 function ModSortWarningPopup:onMouseUp(x, y)
     ISPanelJoypad.onMouseUp(self, x, y)
 
@@ -239,7 +246,6 @@ function ModSortWarningPopup:onMouseUp(x, y)
     end
 end
 
-
 function ModSortWarningPopup:onMouseDownOutside(x, y)
     ISPanelJoypad.onMouseDownOutside(self, x, y)
 
@@ -247,7 +253,6 @@ function ModSortWarningPopup:onMouseDownOutside(x, y)
         self:setExpanded(false)
     end
 end
-
 
 function ModSortWarningPopup:prerender()
     ISPanelJoypad.prerender(self)

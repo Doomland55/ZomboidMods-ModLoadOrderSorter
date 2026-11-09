@@ -37,7 +37,7 @@ function MLOS_ContextMenu:display()
     self:clearChildren()
 
     local font = UIFont.Small
-    local fontHgt = getTextManager():getFontHeight(font)
+    -- local fontHgt = getTextManager():getFontHeight(font)
     local maxWidth = self.minWidth
 
     -- 1. Считаем максимальную ширину по тексту
