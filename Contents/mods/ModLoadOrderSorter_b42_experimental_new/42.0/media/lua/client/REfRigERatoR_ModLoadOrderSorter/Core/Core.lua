@@ -76,6 +76,42 @@ MLOS_CORE.rawCategoryOrder = MLOS_CORE.rawCategoryOrder or defaultCategoryOrder
 MLOS_CORE.categoryOrder = MLOS_CORE.categoryOrder or {}
 
 
+-- #region COLORS
+MLOS_CORE.COLORS = {
+	reset = {r=1.00, g=1.00, b=1.00}, -- normal (white)
+    incompatible = {r=0.75, g=0.30, b=1.00}, -- purple
+    requirementsError = {r=0.98, g=0.20, b=0.20},  -- red
+    sortingRulesWarning = {r=1.00, g=0.75, b=0.20}, -- yellow 1
+	fileConflict = {r=1.00, g=0.65, b=0.20},  -- yellow 2
+    selection = {r=0.70, g=0.35, b=0.15, a=0.30}, -- cyan (light blue)
+    search = {r=0.50, g=1.00, b=1.00, a=0.30}  -- brown
+}
+
+local function colorTag(color)
+    return string.format("<RGB:%.2f,%.2f,%.2f>", color.r, color.g, color.b)
+end
+
+function MLOS_CORE:getColosLegendTooltip()
+	local colors = self.COLORS
+    local entries = {
+        {colors.incompatible, "UI_MLOS_Legend_Purple"},
+        {colors.requirementsError, "UI_MLOS_Legend_Red"},
+        {colors.sortingRulesWarning, "UI_MLOS_Legend_Yellow"},
+        {colors.reset, "UI_MLOS_Legend_Normal"},
+        {colors.fileConflict, "UI_MLOS_Legend_FileConflict"},
+        {colors.selection, "UI_MLOS_Legend_Selected"},
+        {colors.search, "UI_MLOS_Legend_Search"}
+    }
+    local lines = {getText("UI_MLOS_Legend_Title")}
+    for _, entry in ipairs(entries) do
+        lines[#lines + 1] = colorTag(entry[1]) .. "[###] " .. colorTag(colors.reset) .. getText(entry[2])
+    end
+    lines[#lines + 1] = colorTag(colors.reset) .. getText("UI_MLOS_Legend_Priority")
+    return table.concat(lines, " <LINE> ")
+end
+
+-- #endregion
+
 function MLOS_CORE:initCategoryConfig()
 	local filePath = self.MLOS_ROOT .. "/categoriesConfig.txt"
 
