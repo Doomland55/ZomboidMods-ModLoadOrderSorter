@@ -753,7 +753,7 @@ local function initialiseItemContextMenu(scrollObject)
         end
 
         local screenX = slf:getAbsoluteX() + x + slf:getXScroll() + PADDING
-        local screenY = slf:getAbsoluteY() + y + slf:getYScroll() - BUTTON_HGT * 0.5
+        local screenY = slf:getAbsoluteY() + y + slf:getYScroll() - BUTTON_HGT * 0.3
 
         local context = MLOS_ContextMenu:new(screenX, screenY)
         slf.MLOS_activeContextMenu = context

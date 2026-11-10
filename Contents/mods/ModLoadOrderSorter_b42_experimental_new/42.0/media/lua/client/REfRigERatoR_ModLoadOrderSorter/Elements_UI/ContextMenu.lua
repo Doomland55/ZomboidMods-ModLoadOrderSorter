@@ -3,7 +3,7 @@ require "ISUI/ISButton"
 
 MLOS_ContextMenu = ISPanelJoypad:derive("MLOS_ContextMenu")
 
-function MLOS_ContextMenu:new(x, y)
+function MLOS_ContextMenu:new(x, y, titleLeft)
     local o = ISPanelJoypad:new(x, y, 100, 10)
     setmetatable(o, self)
     self.__index = self
@@ -11,10 +11,11 @@ function MLOS_ContextMenu:new(x, y)
     o.options = {}
     o.itemHeight = 22
     o.minWidth = 140
-    o.pad = 3
+    o.pad = 1
 
     o.backgroundColor = {r = 0.10, g = 0.10, b = 0.10, a = 0.95}
-    o.borderColor =     {r = 0.35, g = 0.35, b = 0.35, a = 1.00}
+    o.borderColor =     {r = 0.35, g = 0.35, b = 0.35, a = 0.80}
+    o.titleLeft = titleLeft or true
 
     return o
 end
@@ -56,6 +57,9 @@ function MLOS_ContextMenu:display()
         btn:instantiate()
         btn:setTooltip(opt.tooltip)
         btn:setFont(font)
+        btn.titleLeft = self.titleLeft
+        btn.isBorderVisible = false
+        btn.backgroundColor = self.backgroundColor
         btn.optData = opt
 
         self:addChild(btn)

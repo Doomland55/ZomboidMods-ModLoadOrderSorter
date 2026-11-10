@@ -129,13 +129,13 @@ function ModSortWarningPopup:createChildren()
     self.copiedFlash = 0
     self.listBox.onMouseUp = listBoxOnMouseUp
 
-    scrollExt:addItemContextMenu(self.listBox, "Clear", nil, function(slf) self:clearWarnings() end)
     scrollExt:addItemContextMenu(self.listBox, "Copy all", nil, function(slf)
         local lines = {}; for i = 1, #slf.items do lines[i] = slf.items[i].item.copyText end
         local res = table.concat(lines, "\n")
         Clipboard.setClipboard(res)
         if self.parent then self.parent.copiedFlash = 90 end
     end)
+    scrollExt:addItemContextMenu(self.listBox, "Clear", nil, function(slf) self:clearWarnings() end)
 end
 
 -- Добавление предупреждения: ВСЕ вычисления происходят ровно 1 раз здесь!
