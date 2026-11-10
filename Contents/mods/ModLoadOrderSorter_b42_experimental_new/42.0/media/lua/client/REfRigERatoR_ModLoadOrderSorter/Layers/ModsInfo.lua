@@ -32,7 +32,7 @@ end
 ---@param sortingRules table|nil rules data from the SortingRules layer (rules[modId])
 ---@param reread boolean|nil force rebuild of cached info
 ---@return table current order (array of modIds)
-function MLOS_ModsInfo:getData(modsList, sortingRules, reread)
+function MLOS_ModsInfo:refreshData(modsList, sortingRules, reread, context)
 	if not modsList then return {} end
 	sortingRules = sortingRules or {}
 
@@ -56,7 +56,14 @@ function MLOS_ModsInfo:getData(modsList, sortingRules, reread)
 
 		self.data[modId] = extraModInfo
 		table.insert(curentOrder, modId)
+        if context and #curentOrder % 8 == 0 then
+            context:progress(#curentOrder, #modsList)
+            context:yield()
+        end
 	end
+
+    -- Remove data for mods that are no longer in this request.
+    for id in pairs(self.data) do if not enabled[id] then self.data[id] = nil end end
 
 	-- Build reverse requirements only for enabled mods.
     for id in pairs(enabled) do
@@ -100,6 +107,39 @@ function MLOS_ModsInfo:getData(modsList, sortingRules, reread)
 	end
 
 	return curentOrder
+end
+
+
+-- Dependencies are declared and awaited here, not in LayerManager.
+function MLOS_ModsInfo:getData(modsList, context)
+    local rules = context:waitFor("sortingRules")
+    if not rules then return end
+    self.currentOrder = self:refreshData(modsList, core.layers.sortingRules.data, context.reread, context)
+    context:progress(#modsList, #modsList)
+    return self.data
+end
+
+function MLOS_ModsInfo:getWarnings()
+    local warnings = {}
+    for modId, info in pairs(self.data or {}) do
+        if info.warnings then
+            if not utils:tableIsEmpty(info.warnings.missing) then
+                warnings[#warnings + 1] = {
+                    severity = "CRITICAL", layer = "ModsInfo",
+                    title = getText("UI_MLOS_MissingDep_Title") .. " [" .. tostring(info.name or modId) .. "]",
+                    message = getText("UI_MLOS_MissingDep_Msg", tostring(info.name or modId), table.concat(info.warnings.missing, ", "))
+                }
+            end
+            if not utils:tableIsEmpty(info.warnings.incompatible) then
+                warnings[#warnings + 1] = {
+                    severity = "CRITICAL", layer = "ModsInfo",
+                    title = getText("UI_MLOS_Incompatible_Title") .. " [" .. tostring(info.name or modId) .. "]",
+                    message = getText("UI_MLOS_Incompatible_Msg", tostring(info.name or modId), table.concat(info.warnings.incompatible, ", "))
+                }
+            end
+        end
+    end
+    return warnings
 end
 
 

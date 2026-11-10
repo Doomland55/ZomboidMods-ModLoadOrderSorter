@@ -115,6 +115,29 @@ end
 --#endregion
 
 
+-- Layer progress is aggregated by the manager; no UI knowledge of individual
+-- layer APIs is required when another layer is registered.
+local function showLayerProgress(panel, status)
+    if not panel.MLOS_ProgressBar then return end
+    panel.MLOS_ProgressBar:setVisible(not status.completed)
+    panel.MLOS_ProgressBar:setProgress(status.total > 0 and status.progress / status.total or 1)
+    local active = {}
+    for _, layer in ipairs(status.layers) do
+        if layer.status == "running" or layer.status == "waiting" then
+            local text = layer.name
+            if layer.waitingFor then
+                text = text .. " → " .. layer.waitingFor
+            elseif layer.progress and layer.progress.total > 0 then
+                text = text .. " " .. layer.progress.current .. "/" .. layer.progress.total
+            end
+            active[#active + 1] = text
+        end
+    end
+    local title = getText("UI_MLOS_Layers_Progress", status.finished, status.total)
+    if #active > 0 then title = title .. " | " .. table.concat(active, ", ") end
+    panel.MLOS_ProgressBar:setText(title)
+end
+
 function ModLoadOrderPanelOverride:instantiate()
     origInstantiate(self)
     print("[MLOS] Layers initialisation STARTED")
@@ -124,13 +147,7 @@ function ModLoadOrderPanelOverride:instantiate()
     --     self.MLOS_ProgressBar:setProgress(0)
     -- end
     core.layersManager:initialise(self.modList.items, {
-        onFilesProgress = function(current, total)
-            if self.MLOS_ProgressBar then
-                self.MLOS_ProgressBar:setVisible(true)
-                self.MLOS_ProgressBar:setText(getText("UI_MLOS_Analysis_Progress", current, total))
-                self.MLOS_ProgressBar:setProgress(total > 0 and (current / total) or 1)
-            end
-        end,
+        onProgress = function(status) showLayerProgress(self, status) end,
         onComplete = function()
             print("[MLOS] Layers initialisation FINISHED")
             if self.MLOS_ProgressBar then self.MLOS_ProgressBar:setVisible(false) end
@@ -155,6 +172,10 @@ end
 -- Topological auto sort: builds the dependency graph from all layers,
 -- sorts the mods and applies the new order (with a backup file)
 function ModLoadOrderPanelOverride:autoSort()
+    if not core.layersManager:isSuccessful() then
+        if self.warningPopup then self.warningPopup:addWarning(getText("UI_MLOS_Layers_NotReady"), getText("UI_MLOS_Layers_NotReady_Msg"), "Layers") end
+        return
+    end
     local sortedIds = sortingCore:sort(self.modList.items)
     sortingCore:applyOrder(self, sortedIds)
 
@@ -170,7 +191,10 @@ end
 
 
 local function onRulesEditorButton(self, button)
-    if not core.layers.sortingRules or not core.layers.modInfo then return end
+    if not core.layersManager:isSuccessful() or not core.layers.sortingRules.loaded or not core.layers.modInfo.loaded then
+        if self.warningPopup then self.warningPopup:addWarning(getText("UI_MLOS_Layers_NotReady"), getText("UI_MLOS_Layers_NotReady_Msg"), "Layers") end
+        return
+    end
 
     local editor = srEditor:new(self.x, self.y, self.width, self.height, self)
     editor:initialise()
@@ -292,10 +316,7 @@ function ModLoadOrderPanelOverride:createChildren()
     scrollExt:addContextMenuOption(contextMenuBtn, "Re-scan files", "Rebuild the file analysis cache", function(panel)
         core.layersManager:initialise(panel.modList.items, {
             reread = true,
-            onFilesProgress = function(n, total)
-                panel.MLOS_ProgressBar:setVisible(true)
-                panel.MLOS_ProgressBar:setProgress(total > 0 and n / total or 1)
-            end,
+            onProgress = function(status) showLayerProgress(panel, status) end,
             onComplete = function()
                 panel.MLOS_ProgressBar:setVisible(false); panel:MLOS_refresh(); panel:showLayerWarnings()
             end

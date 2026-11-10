@@ -8,18 +8,22 @@ local MLOS_SortingRules = {}
 MLOS_SortingRules.data = {} -- saved rules by mod ID
 
 
----@return table
-function MLOS_SortingRules:getData(modsList, reread)
-	if not self.loaded or reread == true then
-		self.data = self:readSortingRules()
-        self.loaded = true
-	end
-	return self.data
+-- Cache state is distinct from the lifecycle's per-run `loaded` flag.
+function MLOS_SortingRules:ensureData(reread)
+    if not self.cacheLoaded or reread == true then
+        self.data = self:readSortingRules()
+        self.cacheLoaded = true
+    end
+    return self.data
 end
 
+-- The manager schedules this just like every other layer.
+function MLOS_SortingRules:getData(modsList, context)
+    return self:ensureData(context and context.reread)
+end
 
 function MLOS_SortingRules:beginEdit()
-    self:getData()
+    self:ensureData()
     self.saved = utils:deepCopy(self.data)
     self.working = utils:deepCopy(self.saved)
     return self.working

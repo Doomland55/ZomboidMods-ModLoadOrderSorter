@@ -12,7 +12,7 @@ local root = 'REfRigERatoR_ModLoadOrderSorter/'
 local core = require(root .. 'Core/Core')
 local utils = require(root .. 'Core/1_Utils')
 local sorter = require(root .. 'Core/2_SortingCore')
-local rules = require(root .. 'Layers/3_SortingRules')
+local rules = require(root .. 'Layers/SortingRules')
 core.layers = { modInfo={data={}}, modFiles={data={}}, sortingRules=rules }
 local function items(...)
     local result = {}
@@ -46,7 +46,7 @@ core.layers.modFiles.data={A={files={'shared'},modifications={}},C={files={'shar
 sorted=sorter:sort(items('A','C','B'), {})
 eq(#sorted,3); eq(#sorter.brokenEdges,1); assert(sorter.brokenEdges[1].weight==100)
 -- Saved/working nested lists are independent; first/last are exclusive.
-rules.data={A={loadAfter={'B'},loadFirst='on'}}; rules.loaded=true
+rules.data={A={loadAfter={'B'},loadFirst='on'}}; rules.cacheLoaded=true
 local working=rules:beginEdit(); working.A.loadAfter[1]='C'; eq(rules.data.A.loadAfter[1],'B')
 rules:setPosition('A','loadLast','category'); eq(working.A.loadFirst,'off')
 rules:discardEdit(); eq(rules.working.A.loadAfter[1],'B'); eq(rules.data.A.loadFirst,'on')
@@ -73,7 +73,7 @@ local steamCallback
 querySteamWorkshopItemDetails=function(ids, callback, self) steamCallback=function(status, info) callback(self,status,info) end end
 local modInfo={getDir=function() return '/mods/test' end,getVersionDir=function() return '/mods/test/42.0' end,
     getCommonDir=function() return '/mods/test/common' end,getWorkshopID=function() return '123' end}
-local files=require(root .. 'Layers/1_ModsFiles')
+local files=require(root .. 'Layers/ModsFiles')
 local complete=false
 files:queryAndGetData({{item={modId='test',modInfo=modInfo}}},{onComplete=function() complete=true end})
 assert(steamCallback and not complete)
@@ -111,17 +111,17 @@ local function pzInfo(id)
         getRequire=function() return javaList({}) end,getLoadAfter=function() return javaList({}) end,
         getLoadBefore=function() return javaList({}) end,getIncompatible=function() return javaList({}) end}
 end
-local infos=require(root .. 'Layers/2_ModsInfo')
+local infos=require(root .. 'Layers/ModsInfo')
 local ilist={}
 for _, id in ipairs({'A','B','C'}) do ilist[#ilist+1]={item={modId=id,modInfo=pzInfo(id)}} end
-infos:getData(ilist, {}, true)
+infos:refreshData(ilist, {}, true)
 eq(infos.data.A.requirements[1],'B'); eq(infos.data.B.requiredBy[1],'A'); eq(infos.data.A.incompatibleMods[1],'C')
-infos:getData({ilist[2],ilist[3]}, {}, false); eq(#infos.data.B.requiredBy,0)
+infos:refreshData({ilist[2],ilist[3]}, {}, false); eq(#infos.data.B.requiredBy,0)
 print('metadata tests passed')
 -- A committed edit writes the working snapshot; discarding never writes it.
 local written=''
 getFileWriter=function() return {write=function(_, text) written=written..text end,close=function() end} end
-rules.data={A={loadAfter={'B'}}}; rules.loaded=true
+rules.data={A={loadAfter={'B'}}}; rules.cacheLoaded=true
 local edit=rules:beginEdit(); edit.A.loadAfter[1]='C'
 rules:discardEdit(); eq(written,''); eq(rules.data.A.loadAfter[1],'B')
 edit=rules:beginEdit(); edit.A.loadAfter[1]='C'; assert(rules:commitEdit())

@@ -513,12 +513,15 @@ function MLOS_ModsFiles:getLegacyData(modsList, opts)
 				if self.data[modId] then
 					self.data[modId].modifications = d.modifications
 					self.data[modId].complete = not d.failed
+                    if d.failed and not utils:contains(self.notLoaded, modId) then
+                        self.notLoaded[#self.notLoaded + 1] = modId
+                    end
 				end
 			end
             indexFileTargets(self.data)
 			self:saveCache()
 			if opts.onComplete then opts.onComplete(self.data) end
-		end)
+		end, opts.onError)
 	else
 		-- nothing to scan: everything came from the cache (or needs no analysis)
         indexFileTargets(self.data)
@@ -656,14 +659,14 @@ function MLOS_ModsFiles:getBuddyData(modsList, opts)
     local function onTick()
         local ok, err = coroutine.resume(worker)
         if not ok or coroutine.status(worker) == "dead" then
-            Events.OnFETick.Remove(onTick)
+            if self.tickHandler then Events.OnFETick.Remove(self.tickHandler) end
             self.tickHandler = nil
             self.isAnalyzing = false
             self:releaseBuddyJob()
             if not ok then
                 print("[MLOS] ZombieBuddy analysis unavailable, using legacy analysis: " .. tostring(err))
                 local fallbackOpts = {
-                    reread = false, onProgress = opts.onProgress,
+                    reread = false, onProgress = opts.onProgress, onError = opts.onError,
                     onComplete = function(result)
                         -- A failed bridge scan must never become a successful empty scan.
                         if failedMod and result[failedMod] then
@@ -685,35 +688,68 @@ function MLOS_ModsFiles:getBuddyData(modsList, opts)
             end
         end
     end
-    self.tickHandler = onTick
-    Events.OnFETick.Add(onTick)
+    local function guardedTick()
+        local success, err = pcall(onTick)
+        if not success then
+            Events.OnFETick.Remove(guardedTick)
+            self.tickHandler = nil
+            self.isAnalyzing = false
+            self:releaseBuddyJob()
+            if opts.onError then opts.onError(err) else print("[MLOS] Files analysis failed: " .. tostring(err)) end
+        end
+    end
+    self.tickHandler = guardedTick
+    Events.OnFETick.Add(guardedTick)
     return self.data
 end
 
-function MLOS_ModsFiles:getData(modsList, opts)
+function MLOS_ModsFiles:analyzeData(modsList, opts)
     if modsList and buddyAvailable() then return self:getBuddyData(modsList, opts) end
     return self:getLegacyData(modsList, opts)
 end
 
 -- Steam details are asynchronous. On failure reuse cached timestamps rather
 -- than invalidating every entry; local signatures still detect obvious edits.
-function MLOS_ModsFiles:queryAndGetData(modsList, opts)
+function MLOS_ModsFiles:cancel()
+    self.requestGeneration = (self.requestGeneration or 0) + 1
     self:releaseBuddyJob()
     if self.tickHandler then Events.OnFETick.Remove(self.tickHandler); self.tickHandler = nil end
+    if self.steamTick then Events.OnFETick.Remove(self.steamTick); self.steamTick = nil end
     self.isAnalyzing = false
-    self.requestGeneration = (self.requestGeneration or 0) + 1
+end
+
+function MLOS_ModsFiles:getData(modsList, context)
+    context:defer()
+    self:queryAndGetData(modsList, {
+        reread = context.reread,
+        onProgress = function(current, total) context:progress(current, total) end,
+        onComplete = function() context:complete() end,
+        onError = function(err) context:fail(err) end,
+    })
+end
+
+function MLOS_ModsFiles:queryAndGetData(modsList, opts)
+    opts = opts or {}
+    self:cancel()
     local generation = self.requestGeneration
     local function finish(status, info)
         if generation ~= self.requestGeneration then return end
-        self.workshopTimes = {}
-        self.steamUnavailable = status ~= "Completed" or not info
-        if not self.steamUnavailable then
-            for i = 0, info:size() - 1 do
-                local detail = info:get(i)
-                self.workshopTimes[tostring(detail:getIDString())] = tostring(detail:getTimeUpdated())
+        if self.steamTick then Events.OnFETick.Remove(self.steamTick); self.steamTick = nil end
+        local ok, err = pcall(function()
+            self.workshopTimes = {}
+            self.steamUnavailable = status ~= "Completed" or not info
+            if not self.steamUnavailable then
+                for i = 0, info:size() - 1 do
+                    local detail = info:get(i)
+                    self.workshopTimes[tostring(detail:getIDString())] = tostring(detail:getTimeUpdated())
+                end
             end
+            self:analyzeData(modsList, opts)
+        end)
+        if not ok then
+            print("[MLOS] Files analysis failed: " .. tostring(err))
+            if opts.onError then opts.onError(err) elseif opts.onComplete then opts.onComplete(self.data) end
         end
-        self:getData(modsList, opts)
     end
     if type(querySteamWorkshopItemDetails) ~= "function" or type(getSteamWorkshopItemIDs) ~= "function" then
         finish("NotCompleted")
@@ -730,10 +766,27 @@ function MLOS_ModsFiles:queryAndGetData(modsList, opts)
         called = true
         finish(status, info)
     end
+    local ticks = 0
+    local function onSteamTick()
+        ticks = ticks + 1
+        if ticks >= 1800 and not called then
+            called = true
+            finish("NotCompleted")
+        end
+    end
+    self.steamTick = onSteamTick
+    Events.OnFETick.Add(onSteamTick)
     local success = pcall(querySteamWorkshopItemDetails, ids, callback, self)
     if not success and not called then called = true; finish("NotCompleted") end
 end
 
+
+function MLOS_ModsFiles:getWarnings()
+    if not self:hasNotLoadedMods() then return {} end
+    return {{ severity = "WARNING", layer = "ModsFiles",
+        title = getText("UI_MLOS_Warning_NotLoaded_Title"),
+        message = getText("UI_MLOS_Warning_NotLoaded_Msg", table.concat(self.notLoaded, ", ")) }}
+end
 
 ---@return boolean true if some mods are enabled but not loaded in this Lua session
 function MLOS_ModsFiles:hasNotLoadedMods()
@@ -745,7 +798,7 @@ end
 ---@param queue table { {modId, relPath}, ... }
 ---@param onProgress function|nil function(current, total)
 ---@param onComplete function|nil function(result) result[modId] = { modifications = {...} }
-function MLOS_ModsFiles:startAsyncAnalysis(queue, onProgress, onComplete)
+function MLOS_ModsFiles:startAsyncAnalysis(queue, onProgress, onComplete, onError)
     if self.tickHandler then Events.OnFETick.Remove(self.tickHandler); self.tickHandler = nil end
     self.isAnalyzing = false
 	if not queue or #queue == 0 then
@@ -784,25 +837,28 @@ function MLOS_ModsFiles:startAsyncAnalysis(queue, onProgress, onComplete)
 
 		self.progress.current = totalFiles
 		if onProgress then onProgress(totalFiles, totalFiles) end
-		if onComplete then onComplete(result) end
 	end)
 
 	local function onTickHandler()
-		if coroutine.status(worker) ~= "dead" then
-			local success, err = coroutine.resume(worker)
-			if not success then
-				print("[MLOS ERROR] Files analysis error: " .. tostring(err))
-				self.isAnalyzing = false
-				Events.OnFETick.Remove(onTickHandler)
-                self.tickHandler = nil
+        local success, err = coroutine.resume(worker)
+        if not success or coroutine.status(worker) == "dead" then
+            if not success then
+                print("[MLOS ERROR] Files analysis error: " .. tostring(err))
                 for _, mod in pairs(result) do mod.failed = true end
-                if onComplete then onComplete(result) end
-			end
-		else
-			self.isAnalyzing = false
-			Events.OnFETick.Remove(onTickHandler)
-		end
-	end
+            end
+            self.isAnalyzing = false
+            Events.OnFETick.Remove(onTickHandler)
+            self.tickHandler = nil
+            if not success and onError then
+                onError(err)
+            elseif onComplete then
+                local callbackOK, callbackErr = pcall(onComplete, result)
+                if not callbackOK then
+                    if onError then onError(callbackErr) else print("[MLOS] Files analysis completion failed: " .. tostring(callbackErr)) end
+                end
+            end
+        end
+    end
 
     self.tickHandler = onTickHandler
 	Events.OnFETick.Add(onTickHandler)

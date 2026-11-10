@@ -49,7 +49,7 @@ getModFileReader=function(_, path)
     end, close=function() end}
 end
 local root='REfRigERatoR_ModLoadOrderSorter/'
-local files=require(root..'Layers/1_ModsFiles')
+local files=require(root..'Layers/ModsFiles')
 local info={getDir=function() return '/mods/test' end,getVersionDir=function() return '/mods/test/42.0' end,
     getCommonDir=function() return '/mods/test/common' end,getWorkshopID=function() return nil end}
 local mods={{item={modId='test',modInfo=info}}}
