@@ -3,151 +3,51 @@ local core = require('REfRigERatoR_ModLoadOrderSorter/Core/Core')
 local listFilesInModDirectory = listFilesInModDirectory
 
 local MLOS_ModsInfo = {}
-MLOS_ModsInfo.data = {} -- data from modInfo. data[modId] = {name, desc, category, requirements, loadAfter, ...}
+MLOS_ModsInfo.data = {} -- data[modId] = { id, name, category, requirements, loadAfter, loadBefore, incompatibleMods, requiredBy, warnings.missing, ... }
 
 
---- Numeric priority of a mod: based on its category order, modified by
---- preorder list, loadFirst/loadLast flags (from mod.info or sorting rules).
----@param mod table extra mod info (with .sortingRules merged in)
----@return number
-local function getPriority(mod)
-	local catCount = #core.rawCategoryOrder * 10
-	local sr = mod.sortingRules or {}
-	local effectiveCategory = sr.category or mod.category or "undefined"
-	if core.categoryOrder[effectiveCategory] == nil then effectiveCategory = "undefined" end
-    local priority = (catCount - (core.categoryOrder[effectiveCategory] - 1) * 10) -- range: 0 ... catCount
+--- Layer entry point, see LayerManager. Collects facts from mod.info for the
+--- enabled mods only; everything that depends on sorting rules or on the
+--- current order (graph, incompatibilities, validation) lives in SortingCore.
+function MLOS_ModsInfo:load(ctx)
+    local data = {}
+    for i, row in ipairs(ctx.mods) do
+        local modId = row.item.modId
+        local info = (ctx.reread ~= true and self.data[modId]) or self:getExtraModInfo(row)
+        info.requiredBy = {}
+        info.warnings = { missing = {} }
 
-	-- hardcoded preorder (this mod and Mod Manager must stay on top)
-	if core.preorder[mod.id] ~= nil then priority = priority + catCount + 1000 + core.preorder[mod.id] end
-    if (sr.loadFirst or mod.loadFirst)  == "on" then priority = priority + catCount + 100 end
-	if (sr.loadLast or mod.loadLast) == "on" then priority = priority - catCount - 100 end
-	if (sr.loadFirst or mod.loadFirst) == "category" then priority = priority + 1 end
-    if (sr.loadLast or mod.loadLast) == "category" then priority = priority - 1 end
-    return priority
-end
-
-
---- Builds/refreshes per-mod info for all enabled mods.
----@param modsList table modList.items of the load order panel
----@param sortingRules table|nil rules data from the SortingRules layer (rules[modId])
----@param reread boolean|nil force rebuild of cached info
----@return table current order (array of modIds)
-function MLOS_ModsInfo:refreshData(modsList, sortingRules, reread, context)
-	if not modsList then return {} end
-	sortingRules = sortingRules or {}
-
-	local curentOrder = {}
-	local enabled = {}
-
-	for _, val in ipairs(modsList) do
-		local modId = val.item.modId
-		enabled[modId] = true
-		local extraModInfo = (reread ~= true and self.data[modId]) or self:getExtraModInfo(val)
-
-		-- recalculate dynamic fields
-		extraModInfo.sortingRules = sortingRules[modId] or {}
-		extraModInfo.warnings = { missing = {}, incompatible = {}, wrongOrder = {}, rules = {} }
-		extraModInfo.fixedLoadAfter = {}
-		extraModInfo.requiredBy = {}
-
-		if extraModInfo.category == nil or not utils:contains(core.rawCategoryOrder, extraModInfo.category) then
-			pcall(function() error("\n[ERROR] --> [MLOS] Mod: [" .. tostring(extraModInfo.name) .. "] have unknown category: " .. tostring(extraModInfo.category) .. "\n") end )
-		end
-
-		self.data[modId] = extraModInfo
-		table.insert(curentOrder, modId)
-        if context and #curentOrder % 8 == 0 then
-            context:progress(#curentOrder, #modsList)
-            coroutine.yield()
+        if info.category == nil or not utils:contains(core.rawCategoryOrder, info.category) then
+            pcall(function() error("\n[ERROR] --> [MLOS] Mod: [" .. tostring(info.name) .. "] have unknown category: " .. tostring(info.category) .. "\n") end )
         end
-	end
 
-    -- Remove data for mods that are no longer in this request.
-    for id in pairs(self.data) do if not enabled[id] then self.data[id] = nil end end
+        data[modId] = info
+        ctx:step(i, #ctx.mods)
+    end
 
-	-- Build reverse requirements only for enabled mods.
-    for id in pairs(enabled) do
-        local info = self.data[id]
+    -- Reverse requirements and requirements that are not enabled.
+    for modId, info in pairs(data) do
         for _, dep in ipairs(info.requirements or {}) do
-            if enabled[dep] then table.insert(self.data[dep].requiredBy, id) end
+            if data[dep] then
+                table.insert(data[dep].requiredBy, modId)
+            else
+                table.insert(info.warnings.missing, dep)
+            end
         end
     end
 
-	-- fixedLoadAfter: inverse of loadBefore (from mod.info + sorting rules)
-	for curmod, modinfo in pairs(self.data) do
-		if enabled[curmod] then
-			local loadBefore = utils:MergeTablesDedup({}, modinfo.loadBefore, modinfo.sortingRules.loadBefore)
-			for _, target in ipairs(loadBefore or {}) do
-				local targetInfo = self.data[target]
-				if target ~= nil and targetInfo ~= nil and enabled[target] then
-					targetInfo.fixedLoadAfter = utils:MergeTablesDedup(targetInfo.fixedLoadAfter or {}, { curmod })
-				end
-			end
-		end
-	end
-
-	-- priorities and warnings
-	for modId, modinfo in pairs(self.data) do
-		if enabled[modId] then
-			modinfo.priority = getPriority(modinfo)
-
-			for _, req in ipairs(modinfo.requirements or {}) do
-				if not enabled[req] then
-					table.insert(modinfo.warnings.missing, req)
-				end
-			end
-
-			local incompatible = utils:MergeTablesDedup({}, modinfo.incompatibleMods, modinfo.sortingRules.incompatibleMods)
-			for _, other in ipairs(incompatible or {}) do
-				if enabled[other] then
-					table.insert(modinfo.warnings.incompatible, other)
-				end
-			end
-		end
-	end
-
-	return curentOrder
-end
-
-
--- Dependencies are declared and awaited here, not in LayerManager.
-function MLOS_ModsInfo:getData(modsList, context)
-    local worker
-    context:onTick(function()
-        -- The layer decides what it depends on and checks again on the next tick.
-        if not context:waitFor("sortingRules") then return end
-        if not worker then
-            worker = coroutine.create(function()
-                self.currentOrder = self:refreshData(modsList, core.layers.sortingRules.data, context.reread, context)
-            end)
-        end
-        local ok, err = coroutine.resume(worker)
-        if not ok then error(err) end
-        if coroutine.status(worker) == "dead" then
-            context:progress(#modsList, #modsList)
-            context:complete()
-        end
-    end)
+    self.data = data
 end
 
 function MLOS_ModsInfo:getWarnings()
     local warnings = {}
     for modId, info in pairs(self.data or {}) do
-        if info.warnings then
-            if not utils:tableIsEmpty(info.warnings.missing) then
-                warnings[#warnings + 1] = {
-                    severity = "CRITICAL", layer = "ModsInfo",
-                    title = getText("UI_MLOS_MissingDep_Title") .. " [" .. tostring(info.name or modId) .. "]",
-                    message = getText("UI_MLOS_MissingDep_Msg", tostring(info.name or modId), table.concat(info.warnings.missing, ", "))
-                }
-            end
-            if not utils:tableIsEmpty(info.warnings.incompatible) then
-                warnings[#warnings + 1] = {
-                    severity = "CRITICAL", layer = "ModsInfo",
-                    title = getText("UI_MLOS_Incompatible_Title") .. " [" .. tostring(info.name or modId) .. "]",
-                    message = getText("UI_MLOS_Incompatible_Msg", tostring(info.name or modId), table.concat(info.warnings.incompatible, ", "))
-                }
-            end
+        if info.warnings and not utils:tableIsEmpty(info.warnings.missing) then
+            warnings[#warnings + 1] = {
+                severity = "CRITICAL", layer = "ModsInfo",
+                title = getText("UI_MLOS_MissingDep_Title") .. " [" .. tostring(info.name or modId) .. "]",
+                message = getText("UI_MLOS_MissingDep_Msg", tostring(info.name or modId), table.concat(info.warnings.missing, ", "))
+            }
         end
     end
     return warnings

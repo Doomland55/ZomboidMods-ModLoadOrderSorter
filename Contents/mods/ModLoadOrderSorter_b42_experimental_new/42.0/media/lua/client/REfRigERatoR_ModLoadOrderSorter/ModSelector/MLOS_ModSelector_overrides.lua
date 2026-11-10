@@ -123,11 +123,9 @@ local function showLayerProgress(panel, status)
     panel.MLOS_ProgressBar:setProgress(status.total > 0 and status.progress / status.total or 1)
     local active = {}
     for _, layer in ipairs(status.layers) do
-        if layer.status == "running" or layer.status == "waiting" then
+        if layer.status == "running" then
             local text = layer.name
-            if layer.waitingFor then
-                text = text .. " → " .. layer.waitingFor
-            elseif layer.progress and layer.progress.total > 0 then
+            if layer.progress.total > 0 then
                 text = text .. " " .. layer.progress.current .. "/" .. layer.progress.total
             end
             active[#active + 1] = text
@@ -160,9 +158,13 @@ end
 
 --- Shows aggregated warnings of all layers in the warning popup
 --- (e.g. enabled mods that are not loaded in this Lua session -> reload Lua)
+--- and, once the data is complete, the enabled incompatible mods.
 function ModLoadOrderPanelOverride:showLayerWarnings()
     if not self.warningPopup then return end
     local warnings = core.layersManager:getWarnings()
+    if core.layersManager:isSuccessful() then
+        for _, w in ipairs(sortingCore:getIncompatibleWarnings(self.modList.items)) do warnings[#warnings + 1] = w end
+    end
     for _, w in ipairs(warnings) do
         self.warningPopup:addMessage(w.title, w.message, w.layer, w.severity)
     end
@@ -191,7 +193,7 @@ end
 
 
 local function onRulesEditorButton(self, button)
-    if not core.layersManager:isSuccessful() or not core.layers.sortingRules.loaded or not core.layers.modInfo.loaded then
+    if not core.layersManager:isSuccessful() then
         if self.warningPopup then self.warningPopup:addWarning(getText("UI_MLOS_Layers_NotReady"), getText("UI_MLOS_Layers_NotReady_Msg"), "Layers") end
         return
     end

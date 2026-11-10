@@ -26,6 +26,9 @@ local tick={}
 Events={OnFETick={Add=function(f) tick[#tick+1]=f end, Remove=function(f)
     for i=#tick,1,-1 do if tick[i]==f then table.remove(tick,i) end end
 end}}
+getTimestampMs=function() return 0 end
+_G.next=nil -- match PZ, where the global next iterator is unavailable
+getText=function(k) return k end
 local function drain()
     local n=0
     while #tick>0 do n=n+1; assert(n<500, 'analysis stuck'); tick[1]() end
@@ -49,7 +52,11 @@ getModFileReader=function(_, path)
     end, close=function() end}
 end
 local root='REfRigERatoR_ModLoadOrderSorter/'
+-- Only the files layer is under test; the other registered layers are stubs.
+package.loaded[root..'Layers/SortingRules']={data={},load=function() end}
+package.loaded[root..'Layers/ModsInfo']={data={},load=function() end}
 local files=require(root..'Layers/ModsFiles')
+local manager=require(root..'Layers/LayerManager')
 local info={getDir=function() return '/mods/test' end,getVersionDir=function() return '/mods/test/42.0' end,
     getCommonDir=function() return '/mods/test/common' end,getWorkshopID=function() return nil end}
 local mods={{item={modId='test',modInfo=info}}}
@@ -67,12 +74,10 @@ MLOS_BuddySource=function(_, i) return sources[i+1] end
 MLOS_BuddyFingerprint=function() return fingerprint end
 MLOS_BuddyRelease=function() releases=releases+1 end
 local function run(opts)
-    local completed=false
-    opts=opts or {}
-    opts.onComplete=function() completed=true end
-    files:queryAndGetData(mods, opts)
+    local status
+    manager:initialise(mods, {reread=opts and opts.reread, onComplete=function(s) status=s end})
     drain()
-    assert(completed)
+    assert(status and status.success)
 end
 -- A newly enabled, not loaded mod is analysed; cache is written in the existing format.
 run()
@@ -123,13 +128,28 @@ assert(#files.notLoaded==1 and files.notLoaded[1]=='test')
 assert(files.data.other.modifications[1].fullTarget=='ISPanel:render' and files.data.other.modifications[1].line==2)
 mods={{item={modId='test',modInfo=info}}}
 MLOS_BuddyBegin=bridge[1]; MLOS_BuddyState=bridge[2]
--- Cancelling an in-flight request releases its worker and ignores the old completion.
-fail=false; pending=100; listed={'media/lua/client/test.lua'}
+-- A bridge that returns garbage or throws is treated like a failed scan of that mod.
+fail=false; listed={}; files.cache={}; saved=nil
+local goodCount=MLOS_BuddyCount
+MLOS_BuddyCount=function() return 'many' end
+run()
+assert(not files.data.test.complete and files:hasNotLoadedMods() and #manager:getWarnings()==1)
+MLOS_BuddyCount=goodCount
+local goodSource=MLOS_BuddySource
+MLOS_BuddySource=function() error('read failed') end
+files.cache={}; run()
+assert(not files.data.test.complete and files.notLoaded[1]=='test')
+MLOS_BuddySource=goodSource
+files.cache={}; run()
+assert(files.data.test.complete and not files:hasNotLoadedMods())
+-- Restarting an in-flight analysis releases its worker and ignores the old run.
+pending=100; listed={'media/lua/client/test.lua'}
 local first=false
-files:queryAndGetData(mods,{onComplete=function() first=true end})
-tick[1]()
+manager:initialise(mods,{onComplete=function() first=true end})
+tick[1](); tick[1]()
 local before=releases
+assert(files.buddyJob=='job')
 pending=0
 run()
-assert(releases>=before+2 and not first and files.data.test.complete)
+assert(releases==before+2 and not first and files.data.test.complete and files.buddyJob==nil)
 print('ZombieBuddy integration tests passed')

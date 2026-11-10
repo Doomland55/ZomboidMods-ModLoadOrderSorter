@@ -8,7 +8,7 @@ local MLOS_SortingRules = {}
 MLOS_SortingRules.data = {} -- saved rules by mod ID
 
 
--- Cache state is distinct from the lifecycle's per-run `loaded` flag.
+-- The rules file is read once per Lua session unless a reread is requested.
 function MLOS_SortingRules:ensureData(reread)
     if not self.cacheLoaded or reread == true then
         self.data = self:readSortingRules()
@@ -17,12 +17,9 @@ function MLOS_SortingRules:ensureData(reread)
     return self.data
 end
 
--- The manager schedules this just like every other layer.
-function MLOS_SortingRules:getData(modsList, context)
-    context:onTick(function()
-        self:ensureData(context.reread)
-        context:complete()
-    end)
+-- Layer entry point, see LayerManager.
+function MLOS_SortingRules:load(ctx)
+    self:ensureData(ctx.reread)
 end
 
 function MLOS_SortingRules:beginEdit()

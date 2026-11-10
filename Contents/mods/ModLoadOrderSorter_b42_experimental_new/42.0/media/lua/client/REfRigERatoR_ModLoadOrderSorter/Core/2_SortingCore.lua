@@ -95,7 +95,7 @@ function MLOS_SortingCore:buildGraph(modsList, activeRules)
 	local edges = {}
 	self.warnings = {}
 
-	-- 1. hard dependencies from ModsInfo (+ sorting rules merged into it)
+	-- 1. hard dependencies from ModsInfo and from the sorting rules
 	for modId, info in pairs(modInfo) do
 		if enabled[modId] then
 			local sr = rules[modId] or {}
@@ -108,7 +108,6 @@ function MLOS_SortingCore:buildGraph(modsList, activeRules)
 
 			for _, dep in ipairs(info.requirements or {}) do need(dep, W_REQUIRE) end
 			for _, dep in ipairs(info.loadAfter or {}) do need(dep, W_LOAD) end
-			-- loadBefore edges are built directly; fixedLoadAfter may refer to old rules.
 			for _, dep in ipairs(info.loadBefore or {}) do before(dep, W_LOAD) end
 			for _, dep in ipairs(sr.loadAfter or {}) do need(dep, W_RULES) end
 			for _, dep in ipairs(sr.loadBefore or {}) do before(dep, W_RULES) end
@@ -387,24 +386,44 @@ function MLOS_SortingCore:sort(modsList, activeRules)
 		})
 	end
 
-	local reported = {}
-	for id in pairs(enabled) do
-		local data, rule = modInfo[id] or {}, rules[id] or {}
-		for _, list in ipairs({ data.incompatibleMods or {}, rule.incompatibleMods or {} }) do
+	for _, warning in ipairs(self:getIncompatibleWarnings(modsList, rules)) do
+		table.insert(self.warnings, warning)
+	end
+
+	return sorted
+end
+
+--- Enabled mods that are declared incompatible by mod.info or by the sorting
+--- rules; one warning per pair. Does not need a sort, so it can be shown as
+--- soon as the layers are loaded.
+---@param modsList table modList.items
+---@param activeRules table|nil working rules; saved rules are used by default
+---@return table list of { severity, layer, title, message }
+function MLOS_SortingCore:getIncompatibleWarnings(modsList, activeRules)
+	local info = (core.layers.modInfo and core.layers.modInfo.data) or {}
+	local rules = activeRules or (core.layers.sortingRules and core.layers.sortingRules.data) or {}
+	local enabled = {}
+	for _, val in ipairs(modsList) do enabled[val.item.modId] = true end
+
+	local function name(id) return tostring((info[id] or {}).name or id) end
+	local warnings, reported = {}, {}
+	for _, val in ipairs(modsList) do
+		local id = val.item.modId
+		for _, list in ipairs({ (info[id] or {}).incompatibleMods or {}, (rules[id] or {}).incompatibleMods or {} }) do
 			for _, other in ipairs(list) do
-				if enabled[other] and id ~= other then
-					local key = id < other and id .. " / " .. other or other .. " / " .. id
-					if not reported[key] then
-						reported[key] = true
-						table.insert(self.warnings,
-							{ severity = "CRITICAL", layer = "ModsInfo", title = "Incompatible mods", message = key })
-					end
+				local key = id < other and (id .. " / " .. other) or (other .. " / " .. id)
+				if enabled[other] and id ~= other and not reported[key] then
+					reported[key] = true
+					table.insert(warnings, {
+						severity = "CRITICAL", layer = "ModsInfo",
+						title = getText("UI_MLOS_Incompatible_Title"),
+						message = getText("UI_MLOS_Incompatible_Msg", name(id), name(other))
+					})
 				end
 			end
 		end
 	end
-
-	return sorted
+	return warnings
 end
 
 --- Returns the highest-severity validation status for each affected mod.

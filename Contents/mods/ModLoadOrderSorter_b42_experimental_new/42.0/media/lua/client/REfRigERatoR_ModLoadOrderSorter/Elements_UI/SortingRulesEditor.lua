@@ -232,7 +232,6 @@ function Editor:save()
         self.warningPopup:addError("Save failed", "Could not write sorting rules.", "SortingRules")
         return
     end
-    core.layers.modInfo:refreshData(self.owner.modList.items, self.rules.data, false)
     if self.owner.MLOS_refresh then self.owner:MLOS_refresh() end
     self:close()
 end

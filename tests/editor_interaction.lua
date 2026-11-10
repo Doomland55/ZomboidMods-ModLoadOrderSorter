@@ -107,6 +107,10 @@ print('editor interaction tests passed')
 
 -- Inspector must handle both selection forms without the global iterator.
 ModSelector={ModLoadOrderPanel={createChildren=noop,instantiate=noop}}
+-- The layer manager registers its layers when it is loaded; the inspector only reads their data.
+package.loaded[root..'Layers/SortingRules']=rules; rules.load=noop
+package.loaded[root..'Layers/ModsInfo']=core.layers.modInfo; core.layers.modInfo.load=noop
+package.loaded[root..'Layers/ModsFiles']=core.layers.modFiles; core.layers.modFiles.load=noop
 require(root..'ModSelector/MLOS_ModSelector_overrides')
 local panel=setmetatable({modList={items=owner.modList.items,selected=1,selected_map={}},
     conflictFilter={isSelected=function() return false end},

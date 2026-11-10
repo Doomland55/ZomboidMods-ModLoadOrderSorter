@@ -73,29 +73,35 @@ local steamCallback
 querySteamWorkshopItemDetails=function(ids, callback, self) steamCallback=function(status, info) callback(self,status,info) end end
 local modInfo={getDir=function() return '/mods/test' end,getVersionDir=function() return '/mods/test/42.0' end,
     getCommonDir=function() return '/mods/test/common' end,getWorkshopID=function() return '123' end}
+getTimestampMs=function() return 0 end
 local files=require(root .. 'Layers/ModsFiles')
-local complete=false
-files:queryAndGetData({{item={modId='test',modInfo=modInfo}}},{onComplete=function() complete=true end})
-assert(steamCallback and not complete)
+-- A layer is a plain function run in a coroutine, so it can be driven without the manager.
+local function start(layer, list, reread)
+    local worker=coroutine.create(function()
+        layer:load({mods=list,reread=reread,step=function() end,wait=function() coroutine.yield() end})
+    end)
+    return function()
+        local ok,err=coroutine.resume(worker); assert(ok,err)
+        return coroutine.status(worker)=='dead'
+    end
+end
+local mods={{item={modId='test',modInfo=modInfo}}}
+local resume=start(files,mods)
+assert(not resume() and steamCallback) -- the layer waits for the Steam answer
 steamCallback('Completed', javaList({{getIDString=function() return '123' end,getTimeUpdated=function() return 50 end}}))
-while #handlers > 0 do handlers[1]() end
-assert(complete); assert(files.data.test.complete); eq(#files.data.test.modifications, 1)
+assert(resume()); assert(files.data.test.complete); eq(#files.data.test.modifications, 1)
 eq(files.data.test.modifications[1].fullTarget,'ISInventoryPane:prerender')
-assert(files.data.test.signature:match('|50$'))
+assert(files.data.test.signature:match('|50$')); eq(#files.staleMods, 1)
 -- Failed Steam query must preserve an existing cache rather than force a rescan.
-complete=false
-files:queryAndGetData({{item={modId='test',modInfo=modInfo}}},{onComplete=function() complete=true end})
+resume=start(files,mods); assert(not resume())
 steamCallback('NotCompleted')
-assert(complete); eq(#handlers, 0); assert(files.data.test.complete)
+assert(resume()); assert(files.data.test.complete); eq(#files.staleMods, 0)
 print('file analysis tests passed')
 eq(files.data.test.files['media/lua/client/test.lua'][1], 'ISInventoryPane:prerender')
 -- Only a newer workshop timestamp causes another scan.
-complete=false
-files:queryAndGetData({{item={modId='test',modInfo=modInfo}}},{onComplete=function() complete=true end})
+resume=start(files,mods); assert(not resume())
 steamCallback('Completed', javaList({{getIDString=function() return '123' end,getTimeUpdated=function() return 51 end}}))
-assert(not complete); assert(#handlers > 0)
-while #handlers > 0 do handlers[1]() end
-assert(complete); assert(files.data.test.signature:match('|51$'))
+assert(resume()); assert(files.data.test.signature:match('|51$')); eq(#files.staleMods, 1)
 print('cache invalidation tests passed')
 -- Requirements from mod.info are merged with ChooseGameInfo, including reverse links.
 isSystemLinux=function() return true end
@@ -114,9 +120,11 @@ end
 local infos=require(root .. 'Layers/ModsInfo')
 local ilist={}
 for _, id in ipairs({'A','B','C'}) do ilist[#ilist+1]={item={modId=id,modInfo=pzInfo(id)}} end
-infos:refreshData(ilist, {}, true)
+assert(start(infos, ilist, true)())
 eq(infos.data.A.requirements[1],'B'); eq(infos.data.B.requiredBy[1],'A'); eq(infos.data.A.incompatibleMods[1],'C')
-infos:refreshData({ilist[2],ilist[3]}, {}, false); eq(#infos.data.B.requiredBy,0)
+eq(#infos.data.A.warnings.missing,0)
+assert(start(infos, {ilist[2],ilist[3]}, false)()); eq(#infos.data.B.requiredBy,0); eq(infos.data.A,nil)
+assert(start(infos, {ilist[1]}, false)()); eq(infos.data.A.warnings.missing[1],'B'); eq(#infos:getWarnings(),1)
 print('metadata tests passed')
 -- A committed edit writes the working snapshot; discarding never writes it.
 local written=''
