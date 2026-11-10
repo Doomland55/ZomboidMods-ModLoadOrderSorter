@@ -14,16 +14,13 @@ local SCREEN_PADDING  = 10
 local hint            = getText("UI_MLOS_ClickToCopy")
 local hintW           = getTextManager():MeasureStringX(UIFont.Small, hint)
 
-
 -- Заранее знаем максимальную ширину текста:
 -- Ширина окна (480) - отступ слева (14) - скроллбар и отступ справа (22) = 444 пикселя
-local MAX_TEXT_WIDTH = EXPANDED_WIDTH - 36
+local MAX_TEXT_WIDTH  = EXPANDED_WIDTH - 36
+local COLOR_CRITICAL  = { r = 0.9, g = 0.2, b = 0.2 }
+local COLOR_WARNING   = { r = 0.95, g = 0.7, b = 0.1 }
 
--- Заранее созданные цвета (чтобы не создавать таблицы в памяти)
-local COLOR_CRITICAL = { r = 0.9, g = 0.2, b = 0.2 }
-local COLOR_WARNING  = { r = 0.95, g = 0.7, b = 0.1 }
 
--- Быстрая обрезка текста (бинарный поиск + защита UTF-8/кириллицы)
 local function truncateText(text, font, maxWidth)
     local tm = getTextManager()
     if tm:MeasureStringX(font, text) <= maxWidth then
@@ -125,7 +122,6 @@ function ModSortWarningPopup:createChildren()
     self.listBox:setVisible(false)
     self:addChild(self.listBox)
 
-    -- click on a warning copies its full text to the clipboard
     self.copiedFlash = 0
     self.listBox.onMouseUp = listBoxOnMouseUp
 

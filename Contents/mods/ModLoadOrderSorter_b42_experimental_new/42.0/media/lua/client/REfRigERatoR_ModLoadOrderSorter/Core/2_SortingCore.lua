@@ -15,12 +15,12 @@ MLOS_SortingCore.warnings = {} -- list of { title, message, layer, severity } fr
 local BACKUP_FILE = "loadOrderBackup.txt"
 
 -- edge weights (hard deps must never be broken, soft ones may be dropped on cycles)
-local W_REQUIRE = 100   -- require= from mod.info
-local W_LOAD = 95       -- loadAfter/loadBefore from mod.info
-local W_RULES = 90      -- loadAfter/loadBefore from sorting rules
-local W_HOOK = 50       -- overwrite must load before a hook of the same function
-local W_SHADOW = 10     -- same lua file in several mods: keep current relative order
-local W_SOFT = 5        -- hooks/overwrites of the same target: keep current relative order
+local W_REQUIRE = 100 -- require= from mod.info
+local W_LOAD = 95     -- loadAfter/loadBefore from mod.info
+local W_RULES = 90    -- loadAfter/loadBefore from sorting rules
+local W_HOOK = 50     -- overwrite must load before a hook of the same function
+local W_SHADOW = 10   -- same lua file in several mods: keep current relative order
+local W_SOFT = 5      -- hooks/overwrites of the same target: keep current relative order
 
 
 local function addEdge(edges, from, to, weight)
@@ -162,7 +162,6 @@ function MLOS_SortingCore:buildGraph(modsList, activeRules)
 		end
 		local ownerCount = #overwrites + #hooks
 		if ownerCount > 1 then
-
 			if #overwrites > 1 then
 				-- several mods fully overwrite the same function. When two of them
 				-- are already connected by an explicit hard dependency (require /
@@ -235,25 +234,24 @@ function MLOS_SortingCore:buildGraph(modsList, activeRules)
 		end
 		if not changed then break end
 	end
-    -- Heuristic edges must not force a later category ahead of an earlier one.
-    for from, list in pairs(edges) do
-        for i = #list, 1, -1 do
-            local e = list[i]
-            if e.weight < W_RULES and catIndex[from] > catIndex[e.to] then table.remove(list, i) end
-        end
-    end
+	-- Heuristic edges must not force a later category ahead of an earlier one.
+	for from, list in pairs(edges) do
+		for i = #list, 1, -1 do
+			local e = list[i]
+			if e.weight < W_RULES and catIndex[from] > catIndex[e.to] then table.remove(list, i) end
+		end
+	end
 
 	return edges, enabled, orderIndex, catIndex
 end
 
-
 -- Shared by sorting and validation so positional rules have identical meaning.
 local function positionRank(id, rules, categories)
-    local rule = rules[id] or {}
-    if rule.loadFirst == "on" then return 0, 0, 0 end
-    if rule.loadLast == "on" then return 2, 0, 0 end
-    local position = rule.loadFirst == "category" and -1 or (rule.loadLast == "category" and 1 or 0)
-    return 1, categories[id] or #core.rawCategoryOrder, position
+	local rule = rules[id] or {}
+	if rule.loadFirst == "on" then return 0, 0, 0 end
+	if rule.loadLast == "on" then return 2, 0, 0 end
+	local position = rule.loadFirst == "category" and -1 or (rule.loadLast == "category" and 1 or 0)
+	return 1, categories[id] or #core.rawCategoryOrder, position
 end
 
 
@@ -285,19 +283,19 @@ function MLOS_SortingCore:sort(modsList, activeRules)
 		if d == 0 then table.insert(ready, id) end
 	end
 
-    -- Rank ready nodes by global position, promoted category and category position.
+	-- Rank ready nodes by global position, promoted category and category position.
 	local rules = activeRules or (core.layers.sortingRules and core.layers.sortingRules.data) or {}
-    local function better(a, b)
-        local ag, ac, ap = positionRank(a, rules, catIndex)
-        local bg, bc, bp = positionRank(b, rules, catIndex)
-        if ag ~= bg then return ag < bg end
-        if ac ~= bc then return ac < bc end
-        if ap ~= bp then return ap < bp end
-        local an = tostring((modInfo[a] or {}).name or a):lower()
-        local bn = tostring((modInfo[b] or {}).name or b):lower()
-        if an ~= bn then return an < bn end
-        return tostring(a) < tostring(b)
-    end
+	local function better(a, b)
+		local ag, ac, ap = positionRank(a, rules, catIndex)
+		local bg, bc, bp = positionRank(b, rules, catIndex)
+		if ag ~= bg then return ag < bg end
+		if ac ~= bc then return ac < bc end
+		if ap ~= bp then return ap < bp end
+		local an = tostring((modInfo[a] or {}).name or a):lower()
+		local bn = tostring((modInfo[b] or {}).name or b):lower()
+		if an ~= bn then return an < bn end
+		return tostring(a) < tostring(b)
+	end
 
 	local sorted = {}
 	local placed = {}
@@ -330,17 +328,17 @@ function MLOS_SortingCore:sort(modsList, activeRules)
 		end
 		if remaining == 0 then break end
 
-        -- Only remove an edge that actually participates in a cycle, not an
-        -- unrelated low-priority edge downstream from one.
-        local function reaches(start, target, seen)
-            if start == target then return true end
-            if seen[start] or placed[start] then return false end
-            seen[start] = true
-            for _, edge in ipairs(edges[start] or {}) do
-                if reaches(edge.to, target, seen) then return true end
-            end
-            return false
-        end
+		-- Only remove an edge that actually participates in a cycle, not an
+		-- unrelated low-priority edge downstream from one.
+		local function reaches(start, target, seen)
+			if start == target then return true end
+			if seen[start] or placed[start] then return false end
+			seen[start] = true
+			for _, edge in ipairs(edges[start] or {}) do
+				if reaches(edge.to, target, seen) then return true end
+			end
+			return false
+		end
 		local weakest = nil -- { list=..., idx=..., from=..., to=..., weight=... }
 		for from, list in pairs(edges) do
 			if not placed[from] then
@@ -378,83 +376,85 @@ function MLOS_SortingCore:sort(modsList, activeRules)
 			title = getText("UI_MLOS_Cycle_Title"),
 			-- when only soft order-hints were dropped, say so explicitly -
 			-- there is no real dependency cycle, just conflicting order hints
-            message = (hasHard and getText("UI_MLOS_Cycle_Msg", table.concat(involved, ", "))
-                or getText("UI_MLOS_OrderHintBroken_Msg", table.concat(involved, ", ")))
-                .. " | " .. (function()
-                    local details = {}
-                    for _, e in ipairs(self.brokenEdges) do details[#details+1] = e.from .. " -> " .. e.to .. " (" .. e.weight .. ")" end
-                    return table.concat(details, "; ")
-                end)()
+			message = (hasHard and getText("UI_MLOS_Cycle_Msg", table.concat(involved, ", "))
+					or getText("UI_MLOS_OrderHintBroken_Msg", table.concat(involved, ", ")))
+				.. " | " .. (function()
+					local details = {}
+					for _, e in ipairs(self.brokenEdges) do details[#details + 1] = e.from ..
+						" -> " .. e.to .. " (" .. e.weight .. ")" end
+					return table.concat(details, "; ")
+				end)()
 		})
 	end
 
-    local reported = {}
-    for id in pairs(enabled) do
-        local data, rule = modInfo[id] or {}, rules[id] or {}
-        for _, list in ipairs({data.incompatibleMods or {}, rule.incompatibleMods or {}}) do
-            for _, other in ipairs(list) do
-                if enabled[other] and id ~= other then
-                    local key = id < other and id .. " / " .. other or other .. " / " .. id
-                    if not reported[key] then
-                        reported[key] = true
-                        table.insert(self.warnings, {severity = "CRITICAL", layer = "ModsInfo", title = "Incompatible mods", message = key})
-                    end
-                end
-            end
-        end
-    end
+	local reported = {}
+	for id in pairs(enabled) do
+		local data, rule = modInfo[id] or {}, rules[id] or {}
+		for _, list in ipairs({ data.incompatibleMods or {}, rule.incompatibleMods or {} }) do
+			for _, other in ipairs(list) do
+				if enabled[other] and id ~= other then
+					local key = id < other and id .. " / " .. other or other .. " / " .. id
+					if not reported[key] then
+						reported[key] = true
+						table.insert(self.warnings,
+							{ severity = "CRITICAL", layer = "ModsInfo", title = "Incompatible mods", message = key })
+					end
+				end
+			end
+		end
+	end
 
 	return sorted
 end
-
 
 --- Returns the highest-severity validation status for each affected mod.
 ---@param modsList table modList.items
 ---@return table status by mod ID (purple, red or yellow)
 function MLOS_SortingCore:validate(modsList, activeRules)
-    local info = (core.layers.modInfo and core.layers.modInfo.data) or {}
-    local rules = activeRules or (core.layers.sortingRules and core.layers.sortingRules.data) or {}
-    local _, enabled, index, cats = self:buildGraph(modsList, rules)
-    local status = {}
-    local severity = { yellow = 1, red = 2, purple = 3 }
-    local function mark(id, color)
-        if not status[id] or severity[color] > severity[status[id]] then status[id] = color end
-    end
-    for id in pairs(enabled) do
-        local data, rule = info[id] or {}, rules[id] or {}
-        for _, dep in ipairs(data.requirements or {}) do
-            if not enabled[dep] or index[dep] > index[id] then mark(id, "red") end
-        end
-        for _, list in ipairs({data.incompatibleMods or {}, rule.incompatibleMods or {}}) do
-            for _, other in ipairs(list) do
-                if enabled[other] then mark(id, "purple"); mark(other, "purple") end
-            end
-        end
-        for _, list in ipairs({data.loadAfter or {}, rule.loadAfter or {}}) do
-            for _, other in ipairs(list) do
-                if enabled[other] and index[other] > index[id] then mark(id, "yellow") end
-            end
-        end
-        for _, list in ipairs({data.loadBefore or {}, rule.loadBefore or {}}) do
-            for _, other in ipairs(list) do
-                if enabled[other] and index[other] < index[id] then mark(id, "yellow") end
-            end
-        end
-    end
-    for i = 1, #modsList do
-        local a = modsList[i].item.modId
-        local ag, ac, ap = positionRank(a, rules, cats)
-        for j = i + 1, #modsList do
-            local b = modsList[j].item.modId
-            local bg, bc, bp = positionRank(b, rules, cats)
-            if ag > bg or (ag == bg and (ac > bc or (ac == bc and ap > bp))) then
-                mark(a, "yellow"); mark(b, "yellow")
-            end
-        end
-    end
-    return status
+	local info = (core.layers.modInfo and core.layers.modInfo.data) or {}
+	local rules = activeRules or (core.layers.sortingRules and core.layers.sortingRules.data) or {}
+	local _, enabled, index, cats = self:buildGraph(modsList, rules)
+	local status = {}
+	local severity = { yellow = 1, red = 2, purple = 3 }
+	local function mark(id, color)
+		if not status[id] or severity[color] > severity[status[id]] then status[id] = color end
+	end
+	for id in pairs(enabled) do
+		local data, rule = info[id] or {}, rules[id] or {}
+		for _, dep in ipairs(data.requirements or {}) do
+			if not enabled[dep] or index[dep] > index[id] then mark(id, "red") end
+		end
+		for _, list in ipairs({ data.incompatibleMods or {}, rule.incompatibleMods or {} }) do
+			for _, other in ipairs(list) do
+				if enabled[other] then
+					mark(id, "purple"); mark(other, "purple")
+				end
+			end
+		end
+		for _, list in ipairs({ data.loadAfter or {}, rule.loadAfter or {} }) do
+			for _, other in ipairs(list) do
+				if enabled[other] and index[other] > index[id] then mark(id, "yellow") end
+			end
+		end
+		for _, list in ipairs({ data.loadBefore or {}, rule.loadBefore or {} }) do
+			for _, other in ipairs(list) do
+				if enabled[other] and index[other] < index[id] then mark(id, "yellow") end
+			end
+		end
+	end
+	for i = 1, #modsList do
+		local a = modsList[i].item.modId
+		local ag, ac, ap = positionRank(a, rules, cats)
+		for j = i + 1, #modsList do
+			local b = modsList[j].item.modId
+			local bg, bc, bp = positionRank(b, rules, cats)
+			if ag > bg or (ag == bg and (ac > bc or (ac == bc and ap > bp))) then
+				mark(a, "yellow"); mark(b, "yellow")
+			end
+		end
+	end
+	return status
 end
-
 
 --- Applies the sorted order to the load order panel.
 --- The current order is backed up to loadOrderBackup.txt first.
@@ -498,6 +498,5 @@ function MLOS_SortingCore:applyOrder(panel, sortedIds)
 	panel.modList.selected = 1
 	print("[MLOS] New load order applied (" .. #newItems .. " mods). Backup saved to " .. BACKUP_FILE)
 end
-
 
 return MLOS_SortingCore

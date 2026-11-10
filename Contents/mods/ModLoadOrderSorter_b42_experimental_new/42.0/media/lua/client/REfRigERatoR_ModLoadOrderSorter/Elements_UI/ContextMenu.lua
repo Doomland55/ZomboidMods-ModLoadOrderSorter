@@ -13,13 +13,12 @@ function MLOS_ContextMenu:new(x, y, titleLeft)
     o.minWidth = 140
     o.pad = 1
 
-    o.backgroundColor = {r = 0.10, g = 0.10, b = 0.10, a = 0.95}
-    o.borderColor =     {r = 0.35, g = 0.35, b = 0.35, a = 0.80}
+    o.backgroundColor = { r = 0.10, g = 0.10, b = 0.10, a = 0.95 }
+    o.borderColor = { r = 0.35, g = 0.35, b = 0.35, a = 0.80 }
     o.titleLeft = titleLeft or true
 
     return o
 end
-
 
 function MLOS_ContextMenu:addOption(title, tooltip, target, onSelect, ...)
     local opt = {
@@ -74,7 +73,6 @@ function MLOS_ContextMenu:display()
     self:addToUIManager()
 end
 
-
 -- #region Mouse Button Events
 function MLOS_ContextMenu:onButtonClick(button)
     local opt = button.optData
@@ -85,7 +83,6 @@ function MLOS_ContextMenu:onButtonClick(button)
     self:close()
 end
 
-
 function MLOS_ContextMenu:onMouseDownOutside(x, y)
     if self:isMouseOver() then
         return
@@ -93,19 +90,18 @@ function MLOS_ContextMenu:onMouseDownOutside(x, y)
     self:close()
 end
 
-
 function MLOS_ContextMenu:onRightMouseDownOutside(x, y)
-    self:onMouseDownOutside(x, y) 
+    self:onMouseDownOutside(x, y)
 end
 
 function MLOS_ContextMenu:onMouseDown(x, y)
     return true
 end
 
-
 function MLOS_ContextMenu:onMouseUp(x, y)
     return true
 end
+
 -- #endregion
 
 function MLOS_ContextMenu:close()

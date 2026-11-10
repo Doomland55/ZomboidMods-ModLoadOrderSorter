@@ -2,7 +2,8 @@ local utils = require('REfRigERatoR_ModLoadOrderSorter/Core/1_Utils')
 local cacheFileExists = cacheFileExists
 
 
-local defaultCategoryOrder = { "coreRequirement", "tweaks", "resource", "map", "vehicle", "code",  "weapon", "clothes",  "items", "ui", "other", "translation", "undefined" }
+local defaultCategoryOrder = { "coreRequirement", "tweaks", "resource", "map", "vehicle", "code", "weapon", "clothes",
+	"items", "ui", "other", "translation", "undefined" }
 local defaultCategoryConfig = {
 	coreRequirement = {
 		priority = 1,
@@ -64,7 +65,7 @@ local defaultCategoryConfig = {
 }
 
 MLOS_CORE = MLOS_CORE or {}
-MLOS_CORE.MOD_VERSION = "2.0.0"  -- b42.21.0 Huge refactor
+MLOS_CORE.MOD_VERSION = "2.0.0" -- b42.21.0 Huge refactor
 MLOS_CORE.MLOS_ROOT = "ModLoadOrderSorter"
 
 MLOS_CORE.preorder = { ModLoadOrderSorter_b42 = 1, ModManager = 1 }
@@ -78,36 +79,36 @@ MLOS_CORE.categoryOrder = MLOS_CORE.categoryOrder or {}
 
 -- #region COLORS
 MLOS_CORE.COLORS = {
-	reset = {r=1.00, g=1.00, b=1.00}, -- normal (white)
-    incompatible = {r=0.75, g=0.30, b=1.00}, -- purple
-    requirementsError = {r=0.98, g=0.20, b=0.20},  -- red
-    sortingRulesWarning = {r=1.00, g=0.75, b=0.20}, -- yellow 1
-	fileConflict = {r=1.00, g=0.65, b=0.20},  -- yellow 2
-    selection = {r=0.70, g=0.35, b=0.15, a=0.30}, -- cyan (light blue)
-    search = {r=0.50, g=1.00, b=1.00, a=0.30}  -- brown
+	reset = { r = 1.00, g = 1.00, b = 1.00 },       -- normal (white)
+	incompatible = { r = 0.75, g = 0.30, b = 1.00 }, -- purple
+	requirementsError = { r = 0.98, g = 0.20, b = 0.20 }, -- red
+	sortingRulesWarning = { r = 1.00, g = 0.75, b = 0.20 }, -- yellow 1
+	fileConflict = { r = 1.00, g = 0.65, b = 0.20 }, -- yellow 2
+	selection = { r = 0.70, g = 0.35, b = 0.15, a = 0.30 }, -- cyan (light blue)
+	search = { r = 0.50, g = 1.00, b = 1.00, a = 0.30 } -- brown
 }
 
 local function colorTag(color)
-    return string.format("<RGB:%.2f,%.2f,%.2f>", color.r, color.g, color.b)
+	return string.format("<RGB:%.2f,%.2f,%.2f>", color.r, color.g, color.b)
 end
 
 function MLOS_CORE:getColosLegendTooltip()
 	local colors = self.COLORS
-    local entries = {
-        {colors.incompatible, "UI_MLOS_Legend_Purple"},
-        {colors.requirementsError, "UI_MLOS_Legend_Red"},
-        {colors.sortingRulesWarning, "UI_MLOS_Legend_Yellow"},
-        {colors.reset, "UI_MLOS_Legend_Normal"},
-        {colors.fileConflict, "UI_MLOS_Legend_FileConflict"},
-        {colors.selection, "UI_MLOS_Legend_Selected"},
-        {colors.search, "UI_MLOS_Legend_Search"}
-    }
-    local lines = {getText("UI_MLOS_Legend_Title")}
-    for _, entry in ipairs(entries) do
-        lines[#lines + 1] = colorTag(entry[1]) .. "[###] " .. colorTag(colors.reset) .. getText(entry[2])
-    end
-    lines[#lines + 1] = colorTag(colors.reset) .. getText("UI_MLOS_Legend_Priority")
-    return table.concat(lines, " <LINE> ")
+	local entries = {
+		{ colors.incompatible,        "UI_MLOS_Legend_Purple" },
+		{ colors.requirementsError,   "UI_MLOS_Legend_Red" },
+		{ colors.sortingRulesWarning, "UI_MLOS_Legend_Yellow" },
+		{ colors.reset,               "UI_MLOS_Legend_Normal" },
+		{ colors.fileConflict,        "UI_MLOS_Legend_FileConflict" },
+		{ colors.selection,           "UI_MLOS_Legend_Selected" },
+		{ colors.search,              "UI_MLOS_Legend_Search" }
+	}
+	local lines = { getText("UI_MLOS_Legend_Title") }
+	for _, entry in ipairs(entries) do
+		lines[#lines + 1] = colorTag(entry[1]) .. "[###] " .. colorTag(colors.reset) .. getText(entry[2])
+	end
+	lines[#lines + 1] = colorTag(colors.reset) .. getText("UI_MLOS_Legend_Priority")
+	return table.concat(lines, " <LINE> ")
 end
 
 -- #endregion
@@ -127,17 +128,17 @@ function MLOS_CORE:initCategoryConfig()
 
 	-- Read file or create default
 	if cacheFileExists(filePath) ~= true then
-		local saveData = utils:MergeTables({["#MLOS_CORE"] = {categories=MLOS_CORE.rawCategoryOrder}}, MLOS_CORE.categoryConfig)
+		local saveData = utils:MergeTables({ ["#MLOS_CORE"] = { categories = MLOS_CORE.rawCategoryOrder } }, MLOS_CORE.categoryConfig)
 		self:saveTxtFile(filePath, saveData, dataToTxt)
 	else
-		local rawData = self:readTxtFile(filePath, function(addTo, line) return self:getDataFromString(line, addTo) end )
+		local rawData = self:readTxtFile(filePath, function(addTo, line) return self:getDataFromString(line, addTo) end)
 
 		-- Extract category order from [MLOS_CORE] section
-        -- Load categories are intentionally fixed; config customises tag mappings only.
-        MLOS_CORE.rawCategoryOrder = defaultCategoryOrder
+		-- Load categories are intentionally fixed; config customises tag mappings only.
+		MLOS_CORE.rawCategoryOrder = defaultCategoryOrder
 
 		-- Extract category configs
-        rawData = rawData or {}
+		rawData = rawData or {}
 		rawData.MLOS_CORE = nil
 		MLOS_CORE.categoryConfig = rawData
 	end
@@ -147,24 +148,22 @@ function MLOS_CORE:initCategoryConfig()
 	for i, v in ipairs(MLOS_CORE.rawCategoryOrder) do MLOS_CORE.categoryOrder[v] = i end
 end
 
-
 ---@param value string|number|boolean|nil
 ---@return string
 function MLOS_CORE:convertToLoadCategoryString(value)
-	if utils:contains({true, "true", 0}, value) then value = "on"
-	elseif utils:contains({nil, false, "false", 2}, value) or MLOS_CORE.loadCategories[value] == nil then value = "off" end
+	if utils:contains({ true, "true", 0 }, value) then value = "on"
+	elseif utils:contains({ nil, false, "false", 2 }, value) or MLOS_CORE.loadCategories[value] == nil then value = "off" end
 	return tostring(value)
 end
-
 
 ---@param line string
 ---@param addTo table optional table to read value
 ---@returns string table|string
 function MLOS_CORE:getDataFromString(line, addTo)
 	local key, value = string.match(line, '^%s*(.-)%s*=%s*(.-)%s*$') -- split line by '=' and trim
-	key, value = string.lower(key or ""), value or ""          -- replace nil with empty string
+	key, value = string.lower(key or ""), value or ""             -- replace nil with empty string
 	if value == nil then return end
-	
+
 	local new_value = nil
 	if key == "name" or key == "id" then
 		new_value = value
@@ -212,8 +211,7 @@ function MLOS_CORE:getDataFromString(line, addTo)
 	return key, new_value
 end
 
-
--- Saves data (sorted by name) to the file in format: 
+-- Saves data (sorted by name) to the file in format:
 -- [Data Name]
 -- <data filed 1>=<data value/s>
 -- [Data Name 2]
@@ -226,7 +224,7 @@ function MLOS_CORE:saveTxtFile(filePath, saveData, dataToTxtFunc, sortData)
 	if not filePath or not saveData or not dataToTxtFunc then return end
 
 	local file = getFileWriter(filePath, true, false)
-    if not file then return false end
+	if not file then return false end
 	local sectionNames = {}
 	for section, _ in pairs(saveData) do
 		table.insert(sectionNames, section)
@@ -237,14 +235,13 @@ function MLOS_CORE:saveTxtFile(filePath, saveData, dataToTxtFunc, sortData)
 	for _, section in ipairs(sectionNames) do
 		local data = saveData[section]
 		local text = dataToTxtFunc(section, data)
-		if text~=nil then file:write(text .."\n") end
+		if text ~= nil then file:write(text .. "\n") end
 	end
 	file:close()
-    return true
+	return true
 end
 
-
--- Reads the file that contains data in format: 
+-- Reads the file that contains data in format:
 -- [Data Name]
 -- <data filed 1>=<data value/s>
 -- [Data Name 2]
@@ -262,9 +259,7 @@ function MLOS_CORE:readTxtFile(fileName, txtToDataFunc)
 
 	local line = file:readLine()
 	while line ~= nil do
-		
-		if not (line:match("^%s*$") or line:match("^%s*[%-%#%/]+")) then -- skip empty or commentlines
-		
+		if not (line:match("^%s*$") or line:match("^%s*[%-%#%/]+")) then        -- skip empty or commentlines
 			local section = utils:fixSlash(string.match(line, '^%s*%[%s*(.-)%s*%]%s*$')) -- detect modname
 			if section ~= nil then
 				curSection = section
@@ -279,15 +274,12 @@ function MLOS_CORE:readTxtFile(fileName, txtToDataFunc)
 			else
 				table.insert(result, line)
 			end
-
 		end
 		line = file:readLine()
 	end
 	file:close()
 	return result
 end
-
-
 
 MLOS_CORE:initCategoryConfig()
 return MLOS_CORE

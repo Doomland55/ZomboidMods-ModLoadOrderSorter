@@ -61,7 +61,6 @@ function MLOS_ScrollExtensions:initialResacale(scrollObject, x, y, width, height
     updateRectValues(scrollObject, x, y, width, height)
 end
 
-
 -- #region Title
 -- ============================================================
 --                         Title
@@ -94,16 +93,16 @@ function MLOS_ScrollExtensions:addTitle(scrollObject, titleText, inCenter, backg
 
         if titleText and titleText ~= "" then
             if inCenter then
-                slf:drawTextCentre(titleText, localBounds.width * 0.5,  localBounds.y - yscroll + PADDING * 0.5, 1, 1, 1, 1, fontSize)
+                slf:drawTextCentre(titleText, localBounds.width * 0.5, localBounds.y - yscroll + PADDING * 0.5, 1, 1, 1, 1, fontSize)
             else
-                slf:drawText(titleText, PADDING * 0.5,  localBounds.y - yscroll + PADDING * 0.5 , 1, 1, 1, 1, fontSize)
+                slf:drawText(titleText, PADDING * 0.5, localBounds.y - yscroll + PADDING * 0.5, 1, 1, 1, 1, fontSize)
             end
         end
 
         origPrerender(slf)
     end
-
 end
+
 -- #endregion
 
 
@@ -127,6 +126,7 @@ function MLOS_ScrollExtensions:addBackground(scrollObject, backgroundColor, bord
         scrollObject.backgroundColor = backgroundColor
     end
 end
+
 -- #endregion
 
 
@@ -139,15 +139,16 @@ function MLOS_ScrollExtensions.createList(parent, x, y, width, height)
     local colors = core.COLORS
     list.doDrawItem = function(slf, y, item, alt)
         local color = item.item.conflict and colors.fileConflict or colors.reset
-        if slf.selected == item.index then 
-            slf:drawRect(0, y, slf.width, item.height, 0.25, 0.6, 0.6, 0.6) 
+        if slf.selected == item.index then
+            slf:drawRect(0, y, slf.width, item.height, 0.25, 0.6, 0.6, 0.6)
         end
-        slf:drawText(item.text, 4, y+3, color.r, color.g, color.b, 1, UIFont.Small)
+        slf:drawText(item.text, 4, y + 3, color.r, color.g, color.b, 1, UIFont.Small)
         return y + item.height
     end
     parent:addChild(list)
     return list
 end
+
 -- #endregion
 
 
@@ -217,18 +218,16 @@ local function addSearchHighlight(scrollObject)
 
     local originalDoDrawItems = scrollObject.doDrawItem
     scrollObject.doDrawItem = function(slf, y, item, alt)
-
         if scrollObject.foundCounter > 0 and scrollObject.foundIndex > 0 and scrollObject.foundItems[scrollObject.foundIndex] == item.itemindex then
             scrollObject.foundCounter = scrollObject.foundCounter - 1
             local color = core.COLORS.search
             local alpha = color.a
             if scrollObject.foundCounter < 80 then alpha = alpha - (alpha * alpha) end
-            slf:drawRect(0, (y), slf:getWidth(), item.height-1, alpha, color.r, color.g, color.b)
+            slf:drawRect(0, (y), slf:getWidth(), item.height - 1, alpha, color.r, color.g, color.b)
         end
 
         return originalDoDrawItems(slf, y, item, alt)
     end
-
 end
 
 -- #region Ctrl+F hotkey support
@@ -259,17 +258,16 @@ function MLOS_ScrollExtensions:addSearchEntry(scrollObject, offset)
     scrollObject.foundIndex = 0
     scrollObject.foundCounter = 0
 
-    -- TODO Переделать получение y координаты. отвязаться от принудительного применения Padding
     local search_y = scrollObject.y
     if offset ~= nil then search_y = search_y + offset end
 
-    local searchEntry = ISTextEntryBox:new("", scrollObject.x , search_y, scrollObject.width / 2 - 2 * (BUTTON_HGT + PADDING), BUTTON_HGT)
+    local searchEntry = ISTextEntryBox:new("", scrollObject.x, search_y, scrollObject.width / 2 - 2 * (BUTTON_HGT + PADDING), BUTTON_HGT)
     if offset == nil then
         updateRectValues(scrollObject, nil, BUTTON_HGT + PADDING, nil, nil, true)
     end
 
     searchEntry.font = UIFont.Small
-    searchEntry.onTextChange = function() onChangeText(scrollObject, true ) end
+    searchEntry.onTextChange = function() onChangeText(scrollObject, true) end
     searchEntry:initialise()
     searchEntry:instantiate()
     searchEntry:setPlaceholderText("Find: ...")
@@ -282,24 +280,24 @@ function MLOS_ScrollExtensions:addSearchEntry(scrollObject, offset)
     searchBtnPrev.internal = "PREV_SEARCH"
     searchBtnPrev:initialise()
     searchBtnPrev:instantiate()
-    searchBtnPrev.borderColor = {r=1, g=1, b=1, a=0.2}
+    searchBtnPrev.borderColor = { r = 1, g = 1, b = 1, a = 0.2 }
     searchBtnPrev:setFont(UIFont.Small)
     searchBtnPrev:ignoreWidthChange()
     searchBtnPrev:ignoreHeightChange()
     searchBtnPrev:setImage(getTexture("media/ui/MLOS_search_up.png"))
-    searchBtnPrev:setTextureRGBA(1,1,1,0.8)
+    searchBtnPrev:setTextureRGBA(1, 1, 1, 0.8)
     scrollParent:addChild(searchBtnPrev)
 
-    local searchBtnNext = ISButton:new(searchBtnPrev:getRight() + PADDING, searchEntry:getY(), BUTTON_HGT, BUTTON_HGT, "", scrollParent,  function(_) searchNext(scrollObject) end)
+    local searchBtnNext = ISButton:new(searchBtnPrev:getRight() + PADDING, searchEntry:getY(), BUTTON_HGT, BUTTON_HGT, "", scrollParent, function(_) searchNext(scrollObject) end)
     searchBtnNext.internal = "NEXT_SEARCH"
     searchBtnNext:initialise()
     searchBtnNext:instantiate()
-    searchBtnNext.borderColor = {r=1, g=1, b=1, a=0.2}
+    searchBtnNext.borderColor = { r = 1, g = 1, b = 1, a = 0.2 }
     searchBtnNext:setFont(UIFont.Small)
     searchBtnNext:ignoreWidthChange()
     searchBtnNext:ignoreHeightChange()
     searchBtnNext:setImage(getTexture("media/ui/MLOS_search_down.png"))
-    searchBtnNext:setTextureRGBA(1,1,1,0.8)
+    searchBtnNext:setTextureRGBA(1, 1, 1, 0.8)
     scrollParent:addChild(searchBtnNext)
 
     addSearchHighlight(scrollObject)
@@ -321,7 +319,6 @@ function MLOS_ScrollExtensions:addFoldersSupport(scrollObject, options)
     local folders = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/FolderSupport')
     return folders.attach(scrollObject, options)
 end
-
 
 -- #region ============== Multiselection support ==============
 -- New variables:
@@ -433,6 +430,7 @@ function MLOS_ScrollExtensions:addMultiselectionSupport(scrollObject)
     scrollObject.selected_map = {}
     scrollObject.selected_flat = {}
 end
+
 -- #endregion
 
 
@@ -457,7 +455,7 @@ local function moveElements(items, indices, toIndex, stickToItem)
 
     -- создаем маппинг новых индексов
     local indexesMap = {}
-    for i=1, indicesN do
+    for i = 1, indicesN do
         local oldId = indices[i]
         if oldId < imin then imin = oldId end
         if oldId > imax then imax = oldId end
@@ -490,12 +488,12 @@ local function moveElements(items, indices, toIndex, stickToItem)
     -- Основной цикл перемещения элементов
     local result = {}
     icache = 1
-    for i=1, itemsN do
+    for i = 1, itemsN do
         local item = nil
         if indexesMap[i] then
             item = items[indexesMap[i]]
             indexesMap[i] = true
-        elseif i > imin-1 and i < imax + 1 then
+        elseif i > imin - 1 and i < imax + 1 then
             item = items[movingIndexesCache[icache]]
             icache = icache + 1
         else
@@ -509,7 +507,7 @@ local function moveElements(items, indices, toIndex, stickToItem)
         error("[ERROR] MLOS: Items size changed! Expected size: " .. itemsN .. ", Actual size: " .. #result)
     end
 
-    return {items = result, movedIndexesMap = indexesMap, movedIndexesFlat = movedIndexes}
+    return { items = result, movedIndexesMap = indexesMap, movedIndexesFlat = movedIndexes }
 end
 
 
@@ -525,7 +523,7 @@ local function onMoveButton(self, button, scrollObject)
     elseif button.internal == "UP_10" then
         toIndex = selected[1] - 10
     elseif button.internal == "UP_1" then
-         toIndex = selected[1] - 1
+        toIndex = selected[1] - 1
     elseif button.internal == "DOWN_1" then
         toIndex = selected[1] + 1
     elseif button.internal == "DOWN_10" then
@@ -554,12 +552,12 @@ function MLOS_ScrollExtensions:addMoveButtons(scrollObject)
     scrollObject:setWidth(scrollObject.width - (BUTTON_HGT * 2) - PADDING)
 
     local buttonsData = {
-        {title=">>|", internal="UP_TO_BEGINNING", tooltip="Move selected to beginning"},
-        {title=">>", internal="UP_10", tooltip="Move selected up by 10"},
-        {title=">", internal="UP_1", tooltip="Move selected up by 1"},
-        {title="<", internal="DOWN_1", tooltip="Move selected down by 1"},
-        {title="<<", internal="DOWN_10", tooltip="Move selected down by 10"},
-        {title="|<<", internal="DOWN_TO_END", tooltip="Move selected to end"},
+        { title = ">>|", internal = "UP_TO_BEGINNING", tooltip = "Move selected to beginning" },
+        { title = ">>", internal = "UP_10",        tooltip = "Move selected up by 10" },
+        { title = ">", internal = "UP_1",          tooltip = "Move selected up by 1" },
+        { title = "<", internal = "DOWN_1",        tooltip = "Move selected down by 1" },
+        { title = "<<", internal = "DOWN_10",      tooltip = "Move selected down by 10" },
+        { title = "|<<", internal = "DOWN_TO_END", tooltip = "Move selected to end" },
         start_x = scrollObject:getRight() + PADDING,
         start_y = scrollObject.y
     }
@@ -570,7 +568,7 @@ function MLOS_ScrollExtensions:addMoveButtons(scrollObject)
         button:initialise()
         button:instantiate()
         button:setTooltip(btn.tooltip)
-        button.borderColor = {r=1, g=1, b=1, a=0.2}
+        button.borderColor = { r = 1, g = 1, b = 1, a = 0.2 }
         button:setFont(UIFont.Small)
         button:ignoreWidthChange()
         button:ignoreHeightChange()
@@ -579,6 +577,7 @@ function MLOS_ScrollExtensions:addMoveButtons(scrollObject)
         buttonsData.start_y = buttonsData.start_y + BUTTON_HGT + PADDING
     end
 end
+
 -- #endregion
 
 
@@ -601,6 +600,7 @@ function MLOS_ScrollExtensions.addAutoscrollWhileDrag(scrollObject)
         end
     end
 end
+
 -- #endregion
 
 
@@ -616,19 +616,19 @@ local function modListBox_drawOnlyModCard(self, y, item, alt)
 
     if selected_map[item.index] ~= nil then
         local color = core.COLORS.selection
-        self:drawRect(0, (y), self:getWidth(), item.height-1, color.a, color.r, color.g, color.b)
+        self:drawRect(0, (y), self:getWidth(), item.height - 1, color.a, color.r, color.g, color.b)
     end
 
     self:drawRectBorder(0, (y), self:getWidth(), item.height, isMouseOverItem and 1 or 0.5, self.borderColor.r, self.borderColor.g, self.borderColor.b)
 
     -- mod card (vanilla code) do not touch
-    local shift = (item.height - self.boxSize)/2
-    local mouseOverDragTexture = utils:pointInRect(mouseX, mouseY, {x = shift, y = shift + y, height = self.boxSize, width = self.boxSize})
+    local shift = (item.height - self.boxSize) / 2
+    local mouseOverDragTexture = utils:pointInRect(mouseX, mouseY, { x = shift, y = shift + y, height = self.boxSize, width = self.boxSize })
     self:drawTexture(self.dragTexture, shift, shift + y, mouseOverDragTexture and 1 or 0.5, 1, 1, 1)
     if mouseOverDragTexture and self.mouseOverDragIcon ~= item then
         self.mouseOverDragIcon = item
     end
-    
+
     if item.item.icon ~= "" then
         self:drawTextureScaled(getTexture(item.item.icon), item.height + 8, y + (item.height - 28) / 2, 28, 28, 1, 1, 1, 1)
     else
@@ -636,7 +636,7 @@ local function modListBox_drawOnlyModCard(self, y, item, alt)
     end
 
     local itemPadY = self.itemPadY or (item.height - self.fontHgt) / 2
-    self:drawText(item.item.name, item.height + 50, (y)+itemPadY, item.color.r, item.color.g, item.color.b, 0.9, self.font)
+    self:drawText(item.item.name, item.height + 50, (y) + itemPadY, item.color.r, item.color.g, item.color.b, 0.9, self.font)
 
     if item.y0 ~= y then item.y0 = y end
     y = y + item.height
@@ -646,7 +646,7 @@ end
 local function modListBox_onMouseUpOutside(self, x, y)
     ISScrollingListBox.onMouseUpOutside(self, x, y)
     if self.parent and self.parent:isMouseOver() then
-        self:onMouseUp(x,y)
+        self:onMouseUp(x, y)
     end
     self.dragItem = nil
 end
@@ -667,7 +667,7 @@ local function modListBox_onMouseUp(self, x, y)
             end
 
             local result = moveElements(self.items, selectedIndexes, row, isHalf)
-            self.items = result.items  -- flat table
+            self.items = result.items -- flat table
             applySelection(self, result.movedIndexesMap)
             self:updateModsColor()
         end
@@ -711,6 +711,7 @@ function MLOS_ScrollExtensions:modListBoxOverrides(scrollObject)
     scrollObject.onMouseUpOutside = modListBox_onMouseUpOutside
     scrollObject.doDrawItem = modListBox_drawOnlyModCard
 end
+
 -- #endregion
 
 
@@ -772,7 +773,7 @@ local function initialiseItemContextMenu(scrollObject)
             if type(title) == "function" then
                 title = title(selectedRawItems, clickedRawItem)
             end
-            
+
             if isEnabled then
                 context:addOption(
                     title,
@@ -802,6 +803,7 @@ function MLOS_ScrollExtensions:addItemContextMenu(scrollObject, menuName, toolti
         enabled = enabledFunc
     }
 end
+
 -- #endregion
 
 
@@ -823,20 +825,20 @@ local function MLOS_ContextMenuOnButton(target, button)
     target.MLOS_activeContextMenu = context
 
     for _, entry in ipairs(button.MLOS_ContextMenus) do
-            local title = entry.name
-            if type(title) == "function" then
-                title = title(target)
-            end
-
-            context:addOption(
-                title,
-                entry.tooltip,
-                target,
-                entry.menuFunction
-            )
+        local title = entry.name
+        if type(title) == "function" then
+            title = title(target)
         end
 
-        context:display()
+        context:addOption(
+            title,
+            entry.tooltip,
+            target,
+            entry.menuFunction
+        )
+    end
+
+    context:display()
 end
 
 function MLOS_ScrollExtensions:addContextMenuOption(contextMenuBtn, name, tooltip, func)
@@ -871,6 +873,7 @@ function MLOS_ScrollExtensions:addContextMenu(target, x, y, tooltip)
     contextMenuBtn.MLOS_ContextMenus = {}
     return contextMenuBtn
 end
+
 -- #endregion
 
 
