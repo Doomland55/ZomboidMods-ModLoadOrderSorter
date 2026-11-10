@@ -13,6 +13,7 @@ Events={OnFETick={Add=function(f) handlers[#handlers+1]=f end,Remove=function(f)
     for i=#handlers,1,-1 do if handlers[i]==f then table.remove(handlers,i) end end
 end}}
 local function tick()
+    assert(#handlers<=1, 'all jobs should share one game event')
     local copy={}; for i,f in ipairs(handlers) do copy[i]=f end
     for _,f in ipairs(copy) do local live=false; for _,v in ipairs(handlers) do if v==f then live=true end end; if live then f() end end
 end
@@ -33,8 +34,20 @@ local files=require(root..'Layers/ModsFiles')
 local reads,scans=0,0
 function rules:readSortingRules()
     reads=reads+1
-    coroutine.yield() -- dependent layer must wait for loaded state
     return {A={category=reads==1 and 'map' or 'vehicle'}}
+end
+local normalRulesGetData=rules.getData
+local delayFirst=true
+function rules:getData(mods, context)
+    if not delayFirst then return normalRulesGetData(self,mods,context) end
+    delayFirst=false
+    local ticks=0
+    context:onTick(function()
+        ticks=ticks+1
+        if ticks < 2 then return end
+        self:ensureData(context.reread)
+        context:complete()
+    end)
 end
 function info:getExtraModInfo(row)
     local id=row.item.modId

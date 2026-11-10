@@ -2,6 +2,7 @@
 --- dependencies are awaited inside layers, not encoded in this manager.
 local utils = require('REfRigERatoR_ModLoadOrderSorter/Core/1_Utils')
 local core = require('REfRigERatoR_ModLoadOrderSorter/Core/Core')
+local LayerRun = require('REfRigERatoR_ModLoadOrderSorter/Layers/LayerRun')
 if not core then return end
 
 local registeredLayers = {
@@ -63,9 +64,7 @@ function core.layersManager:getWarnings()
 end
 
 
--- A layer implements getData(modsList, context). It may return normally for
--- synchronous work, yield while waiting/working, or call context:defer() and
--- later context:complete()/fail() for an external asynchronous operation.
+-- Every layer starts its own work with getData(modsList, context).
 -- All registered objects exist in core.layers before any getData is invoked.
 local manager = core.layersManager
 
@@ -110,9 +109,7 @@ end
 
 function manager:cancel()
     local run = self.run
-    if not run or not run.active then return end
-    run.active = false
-    if run.tick then Events.OnFETick.Remove(run.tick) end
+    if not LayerRun.stop(run) then return end
     for _, entry in ipairs(registeredLayers) do
         local layer = core.layers[entry.name]
         if layer and layer.status ~= "loaded" and layer.status ~= "failed" then
@@ -128,25 +125,12 @@ function manager:cancel()
     self.completed = false
 end
 
-local function markFailed(task, err, force)
-    if task.layer.status == "failed" or (task.layer.status == "loaded" and not force) then return end
-    task.layer.loaded = false
-    task.layer.status = "failed"
-    task.layer.error = tostring(err)
-    task.layer.waitingFor = nil
-end
-
 --- Initialise all layers uniformly; subsequent calls cancel the previous run.
----@param modsList table modList.items of the load order panel
----@param callbacks table|nil { reread=bool, onProgress=func(status), onComplete=func(status) }
 function manager:initialise(modsList, callbacks)
     self:cancel()
     callbacks = callbacks or {}
     self.completed = false
-    local run = { active = true, tasks = {}, callbacks = callbacks }
-    self.run = run
-
-    -- Register every object before launching any worker, independent of order.
+    -- Load all objects first, so layers can find dependencies regardless of order.
     for _, entry in ipairs(registeredLayers) do
         local layer = core.layers[entry.name]
         if not layer or layer._loadFailed then
@@ -162,98 +146,8 @@ function manager:initialise(modsList, callbacks)
         layer.loaded = false
         layer.status = layer._loadFailed and "failed" or "pending"
         if not layer._loadFailed then layer.error = nil end
-        layer.waitingFor = nil
-        layer.layerProgress = nil
-        run.tasks[entry.name] = { layer = layer, name = entry.name }
+        layer.waitingFor, layer.layerProgress = nil, nil
     end
-
-    for _, entry in ipairs(registeredLayers) do
-        local task = run.tasks[entry.name]
-        if task.layer.status ~= "failed" then
-            local context = { reread = callbacks.reread == true }
-            function context:isCancelled() return not run.active end
-            function context:defer() task.deferred = true end
-            function context:complete()
-                if not run.active or task.layer.status == "failed" or task.layer.status == "loaded" then return end
-                task.layer.status = "loaded"
-                task.layer.loaded = true
-                task.layer.waitingFor = nil
-            end
-            function context:fail(err)
-                if run.active then markFailed(task, err) end
-            end
-            function context:progress(current, total)
-                if run.active and task.layer.status ~= "loaded" and task.layer.status ~= "failed" then
-                    task.layer.layerProgress = { current = tonumber(current) or 0, total = tonumber(total) or 0 }
-                end
-            end
-            function context:yield()
-                if not run.active then return end
-                coroutine.yield()
-            end
-            function context:waitFor(name)
-                local dependency = run.tasks[name]
-                if not dependency then error("Unknown layer dependency: " .. tostring(name)) end
-                while run.active and not dependency.layer.loaded do
-                    if dependency.layer.status == "failed" then
-                        error("Dependency " .. tostring(name) .. " failed: " .. tostring(dependency.layer.error))
-                    end
-                    task.layer.status = "waiting"
-                    task.layer.waitingFor = name
-                    coroutine.yield()
-                end
-                if not run.active then return nil end
-                task.layer.status = "running"
-                task.layer.waitingFor = nil
-                return core.layers[name]
-            end
-            task.worker = coroutine.create(function()
-                task.layer.status = "running"
-                task.layer:getData(modsList, context)
-                if not task.deferred then context:complete() end
-            end)
-        end
-    end
-
-    local function onTick()
-        if not run.active or manager.run ~= run then return end
-        for _, entry in ipairs(registeredLayers) do
-            local task = run.tasks[entry.name]
-            if task and task.worker and task.layer.status ~= "loaded" and task.layer.status ~= "failed"
-                and coroutine.status(task.worker) ~= "dead" then
-                local ok, err = coroutine.resume(task.worker)
-                if not ok then markFailed(task, err, true) end
-            end
-        end
-        -- Dependency cycles cannot ever reach loaded: report them rather than hang.
-        for _, entry in ipairs(registeredLayers) do
-            local task = run.tasks[entry.name]
-            if task and task.layer.status == "waiting" then
-                local visited, chain, current = {}, {}, task
-                while current and current.layer.status == "waiting" do
-                    if visited[current.name] then
-                        markFailed(current, "Cyclic layer dependency: " .. table.concat(chain, " -> ") .. " -> " .. current.name)
-                        break
-                    end
-                    visited[current.name] = true
-                    chain[#chain + 1] = current.name
-                    current = run.tasks[current.layer.waitingFor]
-                end
-            end
-        end
-        local state = manager:getStatus()
-        if state.finished == state.total then
-            manager.completed = true
-            state.completed = true
-            state.success = state.failed == 0
-            run.active = false
-            Events.OnFETick.Remove(onTick)
-        end
-        if callbacks.onProgress then callbacks.onProgress(state) end
-        if manager.run ~= run then return end
-        if state.completed and callbacks.onComplete then callbacks.onComplete(state) end
-    end
-    run.tick = onTick
-    Events.OnFETick.Add(onTick)
-    if callbacks.onProgress then callbacks.onProgress(self:getStatus()) end
+    self.layers = core.layers
+    LayerRun.start(self, registeredLayers, modsList or {}, callbacks)
 end

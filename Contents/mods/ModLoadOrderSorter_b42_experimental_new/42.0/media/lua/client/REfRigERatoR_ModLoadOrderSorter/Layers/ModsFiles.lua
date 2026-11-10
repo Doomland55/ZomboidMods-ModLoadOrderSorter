@@ -1,3 +1,4 @@
+local tickScheduler = require('REfRigERatoR_ModLoadOrderSorter/Layers/TickScheduler')
 ---
 --- Layer "ModsFiles": collects the list of lua files of every enabled mod and
 --- analyses them for overwritten/hooked functions.
@@ -659,7 +660,7 @@ function MLOS_ModsFiles:getBuddyData(modsList, opts)
     local function onTick()
         local ok, err = coroutine.resume(worker)
         if not ok or coroutine.status(worker) == "dead" then
-            if self.tickHandler then Events.OnFETick.Remove(self.tickHandler) end
+            if self.tickHandler then tickScheduler:remove(self.tickHandler) end
             self.tickHandler = nil
             self.isAnalyzing = false
             self:releaseBuddyJob()
@@ -688,18 +689,13 @@ function MLOS_ModsFiles:getBuddyData(modsList, opts)
             end
         end
     end
-    local function guardedTick()
-        local success, err = pcall(onTick)
-        if not success then
-            Events.OnFETick.Remove(guardedTick)
-            self.tickHandler = nil
-            self.isAnalyzing = false
-            self:releaseBuddyJob()
-            if opts.onError then opts.onError(err) else print("[MLOS] Files analysis failed: " .. tostring(err)) end
-        end
-    end
-    self.tickHandler = guardedTick
-    Events.OnFETick.Add(guardedTick)
+    self.tickHandler = onTick
+    tickScheduler:add(onTick, function(err)
+        self.tickHandler = nil
+        self.isAnalyzing = false
+        self:releaseBuddyJob()
+        if opts.onError then opts.onError(err) else print("[MLOS] Files analysis failed: " .. tostring(err)) end
+    end)
     return self.data
 end
 
@@ -713,19 +709,21 @@ end
 function MLOS_ModsFiles:cancel()
     self.requestGeneration = (self.requestGeneration or 0) + 1
     self:releaseBuddyJob()
-    if self.tickHandler then Events.OnFETick.Remove(self.tickHandler); self.tickHandler = nil end
-    if self.steamTick then Events.OnFETick.Remove(self.steamTick); self.steamTick = nil end
+    if self.tickHandler then tickScheduler:remove(self.tickHandler); self.tickHandler = nil end
+    if self.steamTick then tickScheduler:remove(self.steamTick); self.steamTick = nil end
     self.isAnalyzing = false
 end
 
 function MLOS_ModsFiles:getData(modsList, context)
-    context:defer()
-    self:queryAndGetData(modsList, {
-        reread = context.reread,
-        onProgress = function(current, total) context:progress(current, total) end,
-        onComplete = function() context:complete() end,
-        onError = function(err) context:fail(err) end,
-    })
+    context:onTick(function()
+        context:stopTick()
+        self:queryAndGetData(modsList, {
+            reread = context.reread,
+            onProgress = function(current, total) context:progress(current, total) end,
+            onComplete = function() context:complete() end,
+            onError = function(err) context:fail(err) end,
+        })
+    end)
 end
 
 function MLOS_ModsFiles:queryAndGetData(modsList, opts)
@@ -734,7 +732,7 @@ function MLOS_ModsFiles:queryAndGetData(modsList, opts)
     local generation = self.requestGeneration
     local function finish(status, info)
         if generation ~= self.requestGeneration then return end
-        if self.steamTick then Events.OnFETick.Remove(self.steamTick); self.steamTick = nil end
+        if self.steamTick then tickScheduler:remove(self.steamTick); self.steamTick = nil end
         local ok, err = pcall(function()
             self.workshopTimes = {}
             self.steamUnavailable = status ~= "Completed" or not info
@@ -775,7 +773,10 @@ function MLOS_ModsFiles:queryAndGetData(modsList, opts)
         end
     end
     self.steamTick = onSteamTick
-    Events.OnFETick.Add(onSteamTick)
+    tickScheduler:add(onSteamTick, function(err)
+        self.steamTick = nil
+        if opts.onError then opts.onError(err) else print("[MLOS] Steam timeout failed: " .. tostring(err)) end
+    end)
     local success = pcall(querySteamWorkshopItemDetails, ids, callback, self)
     if not success and not called then called = true; finish("NotCompleted") end
 end
@@ -799,7 +800,7 @@ end
 ---@param onProgress function|nil function(current, total)
 ---@param onComplete function|nil function(result) result[modId] = { modifications = {...} }
 function MLOS_ModsFiles:startAsyncAnalysis(queue, onProgress, onComplete, onError)
-    if self.tickHandler then Events.OnFETick.Remove(self.tickHandler); self.tickHandler = nil end
+    if self.tickHandler then tickScheduler:remove(self.tickHandler); self.tickHandler = nil end
     self.isAnalyzing = false
 	if not queue or #queue == 0 then
 		if onComplete then onComplete({}) end
@@ -847,7 +848,7 @@ function MLOS_ModsFiles:startAsyncAnalysis(queue, onProgress, onComplete, onErro
                 for _, mod in pairs(result) do mod.failed = true end
             end
             self.isAnalyzing = false
-            Events.OnFETick.Remove(onTickHandler)
+            tickScheduler:remove(onTickHandler)
             self.tickHandler = nil
             if not success and onError then
                 onError(err)
@@ -861,7 +862,11 @@ function MLOS_ModsFiles:startAsyncAnalysis(queue, onProgress, onComplete, onErro
     end
 
     self.tickHandler = onTickHandler
-	Events.OnFETick.Add(onTickHandler)
+	tickScheduler:add(onTickHandler, function(err)
+        self.tickHandler = nil
+        self.isAnalyzing = false
+        if onError then onError(err) else print("[MLOS] Files analysis failed: " .. tostring(err)) end
+    end)
 end
 
 

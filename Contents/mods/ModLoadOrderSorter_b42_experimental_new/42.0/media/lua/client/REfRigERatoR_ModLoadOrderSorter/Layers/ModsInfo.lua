@@ -58,7 +58,7 @@ function MLOS_ModsInfo:refreshData(modsList, sortingRules, reread, context)
 		table.insert(curentOrder, modId)
         if context and #curentOrder % 8 == 0 then
             context:progress(#curentOrder, #modsList)
-            context:yield()
+            coroutine.yield()
         end
 	end
 
@@ -112,11 +112,22 @@ end
 
 -- Dependencies are declared and awaited here, not in LayerManager.
 function MLOS_ModsInfo:getData(modsList, context)
-    local rules = context:waitFor("sortingRules")
-    if not rules then return end
-    self.currentOrder = self:refreshData(modsList, core.layers.sortingRules.data, context.reread, context)
-    context:progress(#modsList, #modsList)
-    return self.data
+    local worker
+    context:onTick(function()
+        -- The layer decides what it depends on and checks again on the next tick.
+        if not context:waitFor("sortingRules") then return end
+        if not worker then
+            worker = coroutine.create(function()
+                self.currentOrder = self:refreshData(modsList, core.layers.sortingRules.data, context.reread, context)
+            end)
+        end
+        local ok, err = coroutine.resume(worker)
+        if not ok then error(err) end
+        if coroutine.status(worker) == "dead" then
+            context:progress(#modsList, #modsList)
+            context:complete()
+        end
+    end)
 end
 
 function MLOS_ModsInfo:getWarnings()

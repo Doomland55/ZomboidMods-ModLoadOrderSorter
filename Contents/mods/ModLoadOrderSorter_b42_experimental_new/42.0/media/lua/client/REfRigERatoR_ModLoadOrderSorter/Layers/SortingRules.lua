@@ -19,7 +19,10 @@ end
 
 -- The manager schedules this just like every other layer.
 function MLOS_SortingRules:getData(modsList, context)
-    return self:ensureData(context and context.reread)
+    context:onTick(function()
+        self:ensureData(context.reread)
+        context:complete()
+    end)
 end
 
 function MLOS_SortingRules:beginEdit()
