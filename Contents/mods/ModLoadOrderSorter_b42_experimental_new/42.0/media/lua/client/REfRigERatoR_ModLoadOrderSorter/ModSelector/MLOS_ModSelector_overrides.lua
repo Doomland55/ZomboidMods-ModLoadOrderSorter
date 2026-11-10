@@ -20,7 +20,7 @@ require("OptionScreens/ModSelector/ModSelector")
 
 local utils = require('REfRigERatoR_ModLoadOrderSorter/Core/1_Utils')
 local core = require('REfRigERatoR_ModLoadOrderSorter/Core/Core')
-require('REfRigERatoR_ModLoadOrderSorter/Layers/Manager')
+require('REfRigERatoR_ModLoadOrderSorter/Layers/LayerManager')
 local sortingCore = require('REfRigERatoR_ModLoadOrderSorter/Core/2_SortingCore')
 local scrollExt = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/ScrollExtensions')
 local popup = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/WarningPopup')

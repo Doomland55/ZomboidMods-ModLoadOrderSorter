@@ -12,9 +12,11 @@ if not core then return end
 
 -- order matters for merging: later layers override earlier ones (sorting rules win)
 local registeredLayers = {
-	{ name = "modFiles",     path = "REfRigERatoR_ModLoadOrderSorter/Layers/1_ModsFiles" },
-	{ name = "modInfo",      path = "REfRigERatoR_ModLoadOrderSorter/Layers/2_ModsInfo" },
-	{ name = "sortingRules", path = "REfRigERatoR_ModLoadOrderSorter/Layers/3_SortingRules" },
+	{ name = "sortingRules", path = "REfRigERatoR_ModLoadOrderSorter/Layers/SortingRules" },
+	-- { name = "ZombieBuddy",     path = "REfRigERatoR_ModLoadOrderSorter/Layers/1_ModsFiles" },
+	{ name = "modFiles",     path = "REfRigERatoR_ModLoadOrderSorter/Layers/ModsFiles" },
+	{ name = "modInfo",      path = "REfRigERatoR_ModLoadOrderSorter/Layers/ModsInfo" },
+	-- { name = "mod_modFolders", path = "REfRigERatoR_ModLoadOrderSorter/Layers/3_SortingRules" },
 }
 
 core.layers = core.layers or {}
@@ -107,15 +109,17 @@ function core.layersManager:initialise(modsList, callbacks)
 	for i = 1, #registeredLayers do
 		local layer = registeredLayers[i]
 		if not layers[layer.name] then
-			layers[layer.name] = require(layer.path)
+			local layerObj = require(layer.path)
+			layerObj:getData(modsList, callbacks)
+			layers[layer.name] = layerObj
 		end
 	end
 
-	-- 1. sorting rules (fast, from file)
-	layers.sortingRules:getData(modsList, callbacks.reread)
+	-- -- 1. sorting rules (fast, from file)
+	-- layers.sortingRules:getData(modsList, callbacks.reread)
 
-	-- 2. mod info (from game + mod.info, merged with sorting rules)
-	self.currentOrder = layers.modInfo:getData(modsList, layers.sortingRules.data, callbacks.reread)
+	-- -- 2. mod info (from game + mod.info, merged with sorting rules)
+	-- self.currentOrder = layers.modInfo:getData(modsList, layers.sortingRules.data, callbacks.reread)
 
 	-- 3. mod files: initialised LAST, so it can consume data of the layers
 	--    below (modInfo / sortingRules) via core.layers, e.g. to tell apart

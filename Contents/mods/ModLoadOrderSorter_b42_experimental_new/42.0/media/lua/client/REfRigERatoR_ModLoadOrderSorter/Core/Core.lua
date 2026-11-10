@@ -70,7 +70,7 @@ MLOS_CORE.MLOS_ROOT = "ModLoadOrderSorter"
 
 MLOS_CORE.preorder = { ModLoadOrderSorter_b42 = 1, ModManager = 1 }
 MLOS_CORE.loadCategories = { on = 0, category = 1, off = 2 }
-MLOS_CORE.tweakKeys = MLOS_CORE.tweakKeys or { "framework", " api", "_api", "tweak", "interface", "utilit", "bugfix" } --, "optimize"}
+MLOS_CORE.tweakKeys = MLOS_CORE.tweakKeys or { "framework", " api", "_api", "tweak", "interface", "utilit", "bugfix" }                                              --, "optimize"}
 
 MLOS_CORE.categoryConfig = MLOS_CORE.categoryConfig or defaultCategoryConfig
 MLOS_CORE.rawCategoryOrder = MLOS_CORE.rawCategoryOrder or defaultCategoryOrder
@@ -79,13 +79,13 @@ MLOS_CORE.categoryOrder = MLOS_CORE.categoryOrder or {}
 
 -- #region COLORS
 MLOS_CORE.COLORS = {
-	reset = { r = 1.00, g = 1.00, b = 1.00 },       -- normal (white)
-	incompatible = { r = 0.75, g = 0.30, b = 1.00 }, -- purple
+	reset = { r = 1.00, g = 1.00, b = 1.00 },            -- normal (white)
+	incompatible = { r = 0.75, g = 0.30, b = 1.00 },     -- purple
 	requirementsError = { r = 0.98, g = 0.20, b = 0.20 }, -- red
 	sortingRulesWarning = { r = 1.00, g = 0.75, b = 0.20 }, -- yellow 1
-	fileConflict = { r = 1.00, g = 0.65, b = 0.20 }, -- yellow 2
+	fileConflict = { r = 1.00, g = 0.65, b = 0.20 },     -- yellow 2
 	selection = { r = 0.70, g = 0.35, b = 0.15, a = 0.30 }, -- cyan (light blue)
-	search = { r = 0.50, g = 1.00, b = 1.00, a = 0.30 } -- brown
+	search = { r = 0.50, g = 1.00, b = 1.00, a = 0.30 }  -- brown
 }
 
 local function colorTag(color)
@@ -112,6 +112,7 @@ function MLOS_CORE:getColosLegendTooltip()
 end
 
 -- #endregion
+
 
 function MLOS_CORE:initCategoryConfig()
 	local filePath = self.MLOS_ROOT .. "/categoriesConfig.txt"

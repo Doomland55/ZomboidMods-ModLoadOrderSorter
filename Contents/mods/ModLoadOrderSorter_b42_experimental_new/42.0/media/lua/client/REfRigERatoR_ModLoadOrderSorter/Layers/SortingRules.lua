@@ -54,16 +54,11 @@ end
 function MLOS_SortingRules:getSRDataText(modId, data)
 	local saveData = data or self.data[modId]
 	local text = ""
-	if not utils:tableIsEmpty(saveData.loadAfter) then text = text ..
-		"loadAfter=" .. table.concat(saveData.loadAfter, ",") .. "\r\n" end
-	if not utils:tableIsEmpty(saveData.loadBefore) then text = text ..
-		"loadBefore=" .. table.concat(saveData.loadBefore, ",") .. "\r\n" end
-	if not utils:tableIsEmpty(saveData.incompatibleMods) then text = text ..
-		"incompatibleMods=" .. table.concat(saveData.incompatibleMods, ",") .. "\r\n" end
-	if saveData.loadFirst ~= nil and saveData.loadFirst ~= 'off' then text = text ..
-		"loadFirst=" .. saveData.loadFirst .. "\r\n" end
-	if saveData.loadLast ~= nil and saveData.loadLast ~= 'off' then text = text ..
-		"loadLast=" .. saveData.loadLast .. "\r\n" end
+	if not utils:tableIsEmpty(saveData.loadAfter) then text = text .. "loadAfter=" .. table.concat(saveData.loadAfter, ",") .. "\r\n" end
+	if not utils:tableIsEmpty(saveData.loadBefore) then text = text .. "loadBefore=" .. table.concat(saveData.loadBefore, ",") .. "\r\n" end
+	if not utils:tableIsEmpty(saveData.incompatibleMods) then text = text .. "incompatibleMods=" .. table.concat(saveData.incompatibleMods, ",") .. "\r\n" end
+	if saveData.loadFirst ~= nil and saveData.loadFirst ~= 'off' then text = text .. "loadFirst=" .. saveData.loadFirst .. "\r\n" end
+	if saveData.loadLast ~= nil and saveData.loadLast ~= 'off' then text = text .. "loadLast=" .. saveData.loadLast .. "\r\n" end
 	if saveData.category ~= nil then text = text .. "category=" .. saveData.category .. "\r\n" end
 	return text ~= "" and "[" .. modId .. "]\r\n" .. text or nil
 end
@@ -85,12 +80,10 @@ function MLOS_SortingRules:readSortingRules(fileName)
     print("MLOS - Reading sorting rules: ", rulesFile)
     -- Migrate the legacy file once without prepending the root twice.
     if cacheFileExists(rulesFile) ~= true then
-        if not fileName and cacheFileExists(rulesName) == true then
-            local old = core:readTxtFile(rulesName, function(addTo, line) core:getDataFromString(line, addTo) end) or {}
-            self:saveSortingRules(old)
-            return old
-        end
-        return {}
+        if cacheFileExists(rulesName) == false then self:saveSortingRules(); return self.data or {} end
+        local old = core:readTxtFile(rulesName, function(addTo, line) core:getDataFromString(line, addTo) end) or {}
+        self:saveSortingRules(old)
+        return old
     end
     return core:readTxtFile(rulesFile, function(addTo, line) core:getDataFromString(line, addTo) end) or {}
 end

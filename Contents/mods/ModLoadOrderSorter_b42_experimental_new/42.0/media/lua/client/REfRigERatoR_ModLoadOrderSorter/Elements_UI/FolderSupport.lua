@@ -18,11 +18,15 @@ local function keyFor(controller, row)
 end
 
 local function resetSearch(list)
-    if list.foundItems then list.foundItems = {}; list.foundIndex = 0; list.foundCounter = 0 end
+    if list.foundItems then
+        list.foundItems = {}; list.foundIndex = 0; list.foundCounter = 0
+    end
 end
 
 function Controller:rebuild()
-    if self.updateDepth > 0 then self.dirty = true; return end
+    if self.updateDepth > 0 then
+        self.dirty = true; return
+    end
     local list = self.list
     local selectedKeys = {}
     if list.selected_map then
@@ -48,7 +52,7 @@ function Controller:rebuild()
         visible[#visible + 1] = {
             MLOS_folder = folder,
             text = folder.name,
-            item = {name = folder.name, modId = folder.name},
+            item = { name = folder.name, modId = folder.name },
             height = list.itemheight
         }
         if folder.expanded then
@@ -59,7 +63,9 @@ function Controller:rebuild()
 
     list.items = visible
     list.selected = -1
-    if list.selected_map then list.selected_map = {}; list.selected_flat = nil end
+    if list.selected_map then
+        list.selected_map = {}; list.selected_flat = nil
+    end
     for i, row in ipairs(visible) do
         row.index = i
         row.itemindex = i
@@ -111,7 +117,7 @@ function Controller:createFolder(name)
         if folder.name:lower() == name:lower() then return nil end
     end
     self.nextId = self.nextId + 1
-    local folder = {id = self.nextId, name = name, expanded = true}
+    local folder = { id = self.nextId, name = name, expanded = true }
     self.folders[#self.folders + 1] = folder
     self:rebuild()
     return folder
@@ -156,7 +162,9 @@ function Controller:revealMatches(word)
         local id = tostring(item.modId or ""):lower()
         if name:find(word, 1, true) or id:find(word, 1, true) then
             local folder = self:findFolder(self.membership[keyFor(self, row)])
-            if folder and not folder.expanded then folder.expanded = true; changed = true end
+            if folder and not folder.expanded then
+                folder.expanded = true; changed = true
+            end
         end
     end
     if changed then self:rebuild() end
@@ -168,8 +176,8 @@ local function askName(title, initial, accept)
     local panel = ISPanelJoypad:new((getCore():getScreenWidth() - width) / 2,
         (getCore():getScreenHeight() - height) / 2, width, height)
     panel:initialise(); panel:instantiate()
-    panel.backgroundColor = {r=0.08, g=0.08, b=0.08, a=0.98}
-    panel.borderColor = {r=0.6, g=0.6, b=0.6, a=1}
+    panel.backgroundColor = { r = 0.08, g = 0.08, b = 0.08, a = 0.98 }
+    panel.borderColor = { r = 0.6, g = 0.6, b = 0.6, a = 1 }
     local originalPrerender = panel.prerender
     panel.prerender = function(self)
         if originalPrerender then originalPrerender(self) end
@@ -178,7 +186,9 @@ local function askName(title, initial, accept)
     end
     local entry = ISTextEntryBox:new(initial or "", 10, 33, width - 20, 25)
     entry:initialise(); entry:instantiate(); panel:addChild(entry)
-    local function close() panel:setVisible(false); panel:removeFromUIManager() end
+    local function close()
+        panel:setVisible(false); panel:removeFromUIManager()
+    end
     local ok = ISButton:new(width - 160, 90, 70, 25, getText("UI_MLOS_FolderOK"), panel, function(self)
         if accept(entry:getInternalText()) then close() else self.invalid = true end
     end)
@@ -191,7 +201,7 @@ end
 local function selectedKeys(controller, rowIndex)
     local list = controller.list
     local selected = list.selected_map
-    if not selected or not selected[rowIndex] then selected = {[rowIndex] = true} end
+    if not selected or not selected[rowIndex] then selected = { [rowIndex] = true } end
     local keys = {}
     for index, value in pairs(selected) do
         local row = value and list.items[index]
@@ -212,7 +222,8 @@ local function showMenu(controller, x, y, rowIndex)
     if row.MLOS_folder then
         local folder = row.MLOS_folder
         menu:addOption(getText("UI_MLOS_FolderRename"), nil, controller, function(self)
-            askName(getText("UI_MLOS_FolderName"), folder.name, function(name) return self:renameFolder(folder.id, name) end)
+            askName(getText("UI_MLOS_FolderName"), folder.name,
+                function(name) return self:renameFolder(folder.id, name) end)
         end)
         menu:addOption(getText("UI_MLOS_FolderDelete"), nil, controller, function(self) self:removeFolder(folder.id) end)
     else
@@ -230,7 +241,8 @@ local function showMenu(controller, x, y, rowIndex)
             menu:addOption(getText("UI_MLOS_FolderMove") .. ": " .. folder.name, nil, controller,
                 function(self) self:moveItems(keys, folderId) end)
         end
-        menu:addOption(getText("UI_MLOS_FolderRemoveItems"), nil, controller, function(self) self:moveItems(keys, nil) end)
+        menu:addOption(getText("UI_MLOS_FolderRemoveItems"), nil, controller,
+            function(self) self:moveItems(keys, nil) end)
     end
     menu:display()
 end
@@ -239,11 +251,18 @@ function FolderSupport.attach(list, options)
     if not list or not list.items then return nil end
     if list.MLOS_folders then return list.MLOS_folders end
     options = options or {}
-    local controller = setmetatable({list=list, folders={}, membership={}, entries={}, nextId=0, updateDepth=0,
-        getKey=options.getKey or function(item, text)
+    local controller = setmetatable({
+        list = list,
+        folders = {},
+        membership = {},
+        entries = {},
+        nextId = 0,
+        updateDepth = 0,
+        getKey = options.getKey or function(item, text)
             if type(item) == "table" then return item.modId or item.name or text or item end
             return text or item
-        end}, Controller)
+        end
+    }, Controller)
     for _, row in ipairs(list.items) do controller.entries[#controller.entries + 1] = row end
     list.MLOS_folders = controller
 
@@ -284,13 +303,17 @@ function FolderSupport.attach(list, options)
         if originalDown then return originalDown(self, x, y) end
     end
     list.onMouseUp = function(self, x, y)
-        if self.MLOS_folderClick then self.MLOS_folderClick = false; return true end
+        if self.MLOS_folderClick then
+            self.MLOS_folderClick = false; return true
+        end
         if originalUp then return originalUp(self, x, y) end
     end
     if options.contextMenu ~= false then
         list.onRightMouseUp = function(self, x, y)
             local index = self:rowAt(x, y)
-            if index and self.items[index] then showMenu(controller, x, y, index); return true end
+            if index and self.items[index] then
+                showMenu(controller, x, y, index); return true
+            end
         end
     end
     controller:rebuild()
