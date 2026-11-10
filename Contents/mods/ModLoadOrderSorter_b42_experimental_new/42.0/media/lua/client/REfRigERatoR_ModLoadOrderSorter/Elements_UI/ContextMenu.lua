@@ -20,7 +20,7 @@ function MLOS_ContextMenu:new(x, y, titleLeft)
     return o
 end
 
--- Добавление опции (аналог context:addOption)
+
 function MLOS_ContextMenu:addOption(title, tooltip, target, onSelect, ...)
     local opt = {
         title = title,
@@ -33,15 +33,12 @@ function MLOS_ContextMenu:addOption(title, tooltip, target, onSelect, ...)
     return opt
 end
 
--- Сборка и отображение на экране
 function MLOS_ContextMenu:display()
     self:clearChildren()
 
     local font = UIFont.Small
-    -- local fontHgt = getTextManager():getFontHeight(font)
     local maxWidth = self.minWidth
 
-    -- 1. Считаем максимальную ширину по тексту
     for _, opt in ipairs(self.options) do
         local strW = getTextManager():MeasureStringX(font, opt.title) + 24
         if strW > maxWidth then maxWidth = strW end
@@ -50,7 +47,6 @@ function MLOS_ContextMenu:display()
     local currentY = self.pad
     local btnWidth = maxWidth - (self.pad * 2)
 
-    -- 2. Создаем кнопки ISButton для каждой строки
     for _, opt in ipairs(self.options) do
         local btn = ISButton:new(self.pad, currentY, btnWidth, self.itemHeight, opt.title, self, self.onButtonClick)
         btn:initialise()
@@ -69,25 +65,17 @@ function MLOS_ContextMenu:display()
     self:setWidth(maxWidth)
     self:setHeight(currentY + self.pad - 1)
 
-    -- 3. Защита от вылета за пределы экрана
     local screenW = getCore():getScreenWidth()
     local screenH = getCore():getScreenHeight()
+    if self.x + self.width > screenW then self:setX(screenW - self.width) end
+    if self.y + self.height > screenH then self:setY(screenH - self.height) end
 
-    if self.x + self.width > screenW then
-        self:setX(screenW - self.width)
-    end
-    if self.y + self.height > screenH then
-        self:setY(screenH - self.height)
-    end
-
-    -- Добавляем в интерфейс
     self:setAlwaysOnTop(true)
     self:addToUIManager()
 end
 
 
-
--- Обработка клика по кнопке
+-- #region Mouse Button Events
 function MLOS_ContextMenu:onButtonClick(button)
     local opt = button.optData
     if opt and opt.onSelect then
@@ -118,7 +106,7 @@ end
 function MLOS_ContextMenu:onMouseUp(x, y)
     return true
 end
-
+-- #endregion
 
 function MLOS_ContextMenu:close()
     self:setVisible(false)
