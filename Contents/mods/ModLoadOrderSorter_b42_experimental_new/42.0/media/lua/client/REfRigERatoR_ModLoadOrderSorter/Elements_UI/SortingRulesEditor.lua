@@ -79,7 +79,24 @@ function SortingRulesEditor:drawRuleBadges(list, y, item)
     local size = item.height - 4
     local gutter = list.vscroll and list.vscroll:getWidth() or 16
     local right = list.width - gutter - 4
-    -- Fixed slots from left to right: A, B, I.
+    -- Fixed slots from left to right: R, D | A, B, I.
+    local layer = core.layers.ModsInfo
+    local info = layer and layer.data[item.item.modId] or {}
+    local hasRequired = #(info.requirements or {}) > 0
+    local hasDependents = #(info.requiredBy or {}) > 0
+    if hasRequired or hasDependents then
+        local separator = right - 3 * (size + 3) - 3
+        list:drawRect(separator - 2, y + 1, 5, size + 2, 1, .08, .08, .08)
+        list:drawRect(separator, y + 3, 1, size - 2, .8, .7, .7, .7)
+        local function drawDependencyBadge(letter, left)
+            list:drawRect(left, y + 2, size, size, 1, .12, .12, .12)
+            list:drawRectBorder(left, y + 2, size, size, .9, .7, .7, .7)
+            list:drawTextCentre(letter, left + size / 2, y + 2 + (size - FONT_HGT_SMALL) / 2,
+                .9, .9, .9, 1, UIFont.Small)
+        end
+        if hasDependents then drawDependencyBadge("D", separator - size - 6) end
+        if hasRequired then drawDependencyBadge("R", separator - 2 * size - 9) end
+    end
     for index, style in ipairs(ruleStyles) do
         if self:hasRuleTargets(item.item.modId, style.key) then
             local left = right - size - (index - 1) * (size + 3)

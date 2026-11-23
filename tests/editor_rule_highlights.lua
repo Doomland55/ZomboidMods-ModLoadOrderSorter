@@ -193,11 +193,25 @@ view:cancelMode()
 assert(view:hasRuleTargets('mod1', 'loadAfter'))
 view.sortingRules.mod1.incompatibleMods = {'disabledMod'}
 local letters = {}
-local badgeList = {width = 300, drawRect = function() end,
+local badgeList = {width = 300, drawRect = function() end, drawRectBorder = function() end,
     drawTextCentre = function(_, text, x) letters[text] = x end}
 view:drawRuleBadges(badgeList, 0, {height = 20, item = {modId = 'mod1'}})
 assert(letters.A and letters.B and letters.I)
 assert(letters.A < letters.B and letters.B < letters.I)
+assert(letters.R and letters.D and letters.R < letters.D and letters.D < letters.A)
+-- Dependency indicators are facts from ModsInfo, not editable sorting rules.
+core.layers.ModsInfo.data.mod1 = {requirements = {}, requiredBy = {}}
+letters = {}
+view:drawRuleBadges(badgeList, 0, {height = 20, item = {modId = 'mod1'}})
+assert(not letters.R and not letters.D and letters.A)
+core.layers.ModsInfo.data.mod1 = {requiredBy = {'mod2'}}
+letters = {}
+view:drawRuleBadges(badgeList, 0, {height = 20, item = {modId = 'mod1'}})
+assert(not letters.R and letters.D)
+core.layers.ModsInfo = nil
+letters = {}
+view:drawRuleBadges(badgeList, 0, {height = 20, item = {modId = 'mod1'}})
+assert(not letters.R and not letters.D and letters.A)
 local sorter = require(root .. 'Core/2_SortingCore')
 local originalRows = view.modsOrderList.items
 view.owner = {modList = {items = originalRows}}
