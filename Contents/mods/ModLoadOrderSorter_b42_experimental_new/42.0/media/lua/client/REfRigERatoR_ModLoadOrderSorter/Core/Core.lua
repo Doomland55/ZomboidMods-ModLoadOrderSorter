@@ -67,7 +67,7 @@ local defaultCategoryConfig = {
 MLOS_CORE = MLOS_CORE or {}
 MLOS_CORE.MOD_VERSION = "2.0.0" -- b42.21.0 Huge refactor
 MLOS_CORE.MLOS_ROOT = "ModLoadOrderSorter"
-MLOS_CORE.MLOS_LAYERS_ROOT = utils:joinpath(MLOS_CORE.MLOS_ROOT, "ModLoadOrderSorter")
+MLOS_CORE.MLOS_LAYERS_ROOT = utils:joinpath(MLOS_CORE.MLOS_ROOT, "layers")
 
 MLOS_CORE.preorder = { ModLoadOrderSorter_b42 = 1, ModManager = 1 }
 MLOS_CORE.loadCategories = { on = 0, category = 1, off = 2 }
