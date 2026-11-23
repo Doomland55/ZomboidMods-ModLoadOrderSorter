@@ -1,4 +1,10 @@
 {
+    "UI_MLOS_Editor_ClickHint": "Click a mod to add / remove",
+    "UI_MLOS_Editor_Cancel": "Cancel",
+    "UI_MLOS_Editor_Apply": "Apply",
+    "UI_MLOS_Editor_Targets": "%1 — selected: %2",
+    "UI_MLOS_Editor_Editing": "Editing %1: %2",
+
     "UI_modselector_auto": "Sort",
     "UI_ModManagerLoadOrderSorter_MissingDependency_Warning": "Dependencies are missing or in the wrong order",
     "UI_ModManagerLoadOrderSorter_Incompatible_Warning": "Incompatible mods found",

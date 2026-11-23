@@ -88,11 +88,12 @@ function MLOS_ScrollExtensions:addTitle(scrollObject, titleText, inCenter, backg
         end
         -- slf:drawRectBorder(0, localBounds.y - yscroll, slf.width, localBounds.height, 0.5, slf.borderColor.r, slf.borderColor.g, slf.borderColor.b)
 
-        if titleText and titleText ~= "" then
+        local title = type(titleText) == "function" and titleText(slf) or titleText
+        if title and title ~= "" then
             if inCenter then
-                slf:drawTextCentre(titleText, localBounds.width * 0.5, localBounds.y - yscroll + PADDING * 0.5, 1, 1, 1, 1, fontSize)
+                slf:drawTextCentre(title, localBounds.width * 0.5, localBounds.y - yscroll + PADDING * 0.5, 1, 1, 1, 1, fontSize)
             else
-                slf:drawText(titleText, PADDING * 0.5, localBounds.y - yscroll + PADDING * 0.5, 1, 1, 1, 1, fontSize)
+                slf:drawText(title, PADDING * 0.5, localBounds.y - yscroll + PADDING * 0.5, 1, 1, 1, 1, fontSize)
             end
         end
 

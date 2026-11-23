@@ -125,7 +125,10 @@ function SortingRulesEditor:finishEdit()
     self.editModId = nil
     self.editSelected = nil
     self.modeApplyBtn.enable = false
+    self.modeCancelBtn.enable = false
+    self.editingModeList.borderColor = borderColorLight
     for _, style in ipairs(ruleStyles) do
+        self[style.button].enable = true
         self[style.button].borderColor = borderColorLight
     end
     self:refreshEditingList()
@@ -144,8 +147,7 @@ function SortingRulesEditor:onEditModeClick(button)
         if self[candidate.button] == button then style = candidate; break end
     end
     if not style then return end
-    if self.editMode == style then self:cancelMode(); return end
-    if self.editMode then self:cancelMode() end
+    if self.editMode then return end
     local selected = self.modsOrderList.items[self.modsOrderList.selected]
     if not selected then return end
     self.editMode = style
@@ -157,6 +159,9 @@ function SortingRulesEditor:onEditModeClick(button)
     self.editRule[style.key] = self.editRule[style.key] or {}
     button.borderColor = {r = 1, g = 1, b = 1, a = 1}
     self.modeApplyBtn.enable = true
+    self.modeCancelBtn.enable = true
+    for _, candidate in ipairs(ruleStyles) do self[candidate.button].enable = false end
+    self.editingModeList.borderColor = {r = style.color.r, g = style.color.g, b = style.color.b, a = 1}
     self:refreshEditingList()
 end
 
@@ -316,11 +321,17 @@ function SortingRulesEditor:createChildren()
     -- #region Current mods order (left)
     local modsOrder = scrollExt.createList(self, PADDING * 2, y_offset, innerWitdth * 0.4 - PADDING, innerHeight)
     modsOrder.itemheight = FONT_HGT_SMALL + 8
-    scrollExt:addTitle(modsOrder, "Mods Order:", nil, nil, nil, - BUTTON_HGT - PADDING)
+    scrollExt:addTitle(modsOrder, function()
+        return self.editMode and getText("UI_MLOS_Editor_ClickHint") or "Mods Order:"
+    end, nil, nil, UIFont.Small, - BUTTON_HGT - PADDING)
     modsOrder.borderColor = borderColorLight
     modsOrder.font = UIFont.Small
     modsOrder.doDrawItem = function(list, y, item, alt)
-        return scrollDoDrawItem(list, y, item, alt, self:getRuleBackground(item.item.modId))
+        local nextY = scrollDoDrawItem(list, y, item, alt, self:getRuleBackground(item.item.modId))
+        if self.editMode and item.item.modId == self.editModId then
+            list:drawRectBorder(0, y, list.width, item.height - 1, 1, 1, 1, 1)
+        end
+        return nextY
     end
     modsOrder.onMouseDown = function(box, x, y)
         self:onModsOrderMouseDown(box, x, y)
@@ -358,8 +369,13 @@ function SortingRulesEditor:createChildren()
         button.backgroundColorMouseOver = { r = c.r, g = c.g, b = c.b, a = .6 }
     end
 
-    self.modeApplyBtn = createButton(center_x + PADDING, self.incompatible:getBottom() + PADDING,
-        self.loadAfter.width, BUTTON_HGT, "Apply", self, self.applyMode)
+    local actionWidth = (self.loadAfter.width - PADDING) / 2
+    self.modeCancelBtn = createButton(center_x + PADDING, self.incompatible:getBottom() + PADDING,
+        actionWidth, BUTTON_HGT, getText("UI_MLOS_Editor_Cancel"), self, self.cancelMode)
+    self.modeCancelBtn.enable = false
+    self:addChild(self.modeCancelBtn)
+    self.modeApplyBtn = createButton(self.modeCancelBtn:getRight() + PADDING, self.modeCancelBtn.y,
+        actionWidth, BUTTON_HGT, getText("UI_MLOS_Editor_Apply"), self, self.applyMode)
     self.modeApplyBtn.enable = false
     self:addChild(self.modeApplyBtn)
 
@@ -395,7 +411,11 @@ function SortingRulesEditor:createChildren()
     editingModeList.itemheight = FONT_HGT_SMALL + 8
     editingModeList.font = UIFont.Small
     editingModeList.doDrawItem = scrollDoDrawItem
-    scrollExt:addTitle(editingModeList, "Mods in selected mode:", nil, nil, nil, - BUTTON_HGT - PADDING)
+    scrollExt:addTitle(editingModeList, function()
+        if not self.editMode then return "Mods in selected mode:" end
+        return getText("UI_MLOS_Editor_Targets", self[self.editMode.button].title,
+            tostring(#(self.editRule[self.editMode.key] or {})))
+    end, nil, nil, UIFont.Small, - BUTTON_HGT - PADDING)
     scrollExt:addBackground(editingModeList, nil, {})
     editingModeList.borderColor = borderColorLight
     self.editingModeList = editingModeList
@@ -462,7 +482,12 @@ end
 
 function SortingRulesEditor:prerender()
     ISPanelJoypad.prerender(self)
-    self:drawTextCentre('Sorting Rules Editor', self.width * 0.5, PADDING * 2, 1, 1, 1, 1, UIFont.Large)
+    local title = 'Sorting Rules Editor'
+    if self.editMode then
+        local row = self.modsOrderList.items[self.editSelected]
+        title = getText("UI_MLOS_Editor_Editing", self[self.editMode.button].title, row.item.name)
+    end
+    self:drawTextCentre(title, self.width * 0.5, PADDING * 2, 1, 1, 1, 1, UIFont.Large)
 end
 
 -- function SortingRulesEditor:selectMod(id)

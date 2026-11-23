@@ -1,4 +1,10 @@
 {
+    "UI_MLOS_Editor_ClickHint": "Клик по моду — добавить / убрать",
+    "UI_MLOS_Editor_Cancel": "Отмена",
+    "UI_MLOS_Editor_Apply": "Применить",
+    "UI_MLOS_Editor_Targets": "%1 — выбрано: %2",
+    "UI_MLOS_Editor_Editing": "Редактирование %1: %2",
+
     "UI_modselector_auto": "Сортировка",
     "UI_ModManagerLoadOrderSorter_MissingDependency_Warning": "Зависимости отсутствуют или расположены в неправильном порядке",
     "UI_ModManagerLoadOrderSorter_Incompatible_Warning": "Найдены несовместимые моды",

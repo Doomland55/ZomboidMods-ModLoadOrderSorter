@@ -98,7 +98,7 @@ end
 core.layers.SortingRules = {data = {mod1 = {loadAfter = {'mod2'}, loadBefore = {'mod3'}}}}
 view.sortingRules.mod1 = utils:deepCopy(core.layers.SortingRules.data.mod1)
 view.modsOrderList.selected = 1
-view.loadAfter = {}; view.loadBefore = {}; view.incompatible = {}; view.modeApplyBtn = {}
+view.loadAfter = {}; view.loadBefore = {}; view.incompatible = {}; view.modeApplyBtn = {}; view.modeCancelBtn = {}
 view.editingModeList = {items = {}, clear = view.infoList.clear, addItem = view.infoList.addItem, clears = 0}
 ISScrollingListBox = {onMouseDown = function(box, x) box.selected = x end}
 view.modsOrderList.rowAt = function(_, x) return x end
@@ -121,17 +121,24 @@ assert(not view.editMode and view.sortingRules.mod1.loadFirst == 'on')
 assert(core.layers.SortingRules.data.mod1.loadFirst == nil)
 view:onEditModeClick(view.loadAfter)
 view:onModsOrderMouseDown(view.modsOrderList, 2, 0)
-view:onEditModeClick(view.loadAfter)
+view:cancelMode()
 assert(not view.editMode and view.sortingRules.mod1.loadFirst == 'on')
 assert(view.editOriginalRule == nil)
 assert(view.sortingRules.mod1.loadAfter[1] == 'mod2')
--- Switching modes also preserves previously applied, unsaved rules.
+-- All mode buttons are disabled; even direct calls cannot switch modes.
+assert(view.loadAfter.enable and view.loadBefore.enable and view.incompatible.enable)
+assert(not view.modeApplyBtn.enable and not view.modeCancelBtn.enable)
 view:onEditModeClick(view.loadAfter)
+assert(not view.loadAfter.enable and not view.loadBefore.enable and not view.incompatible.enable)
+assert(view.modeApplyBtn.enable and view.modeCancelBtn.enable)
 view:onModsOrderMouseDown(view.modsOrderList, 2, 0)
 view:onEditModeClick(view.loadBefore)
-assert(view.sortingRules.mod1.loadAfter[1] == 'mod2')
-assert(view.editRule.loadFirst == 'on')
+assert(view.editMode.key == 'loadAfter')
+assert(#view.editRule.loadAfter == 0)
 view:cancelMode()
+assert(view.sortingRules.mod1.loadAfter[1] == 'mod2')
+assert(view.sortingRules.mod1.loadFirst == 'on')
+assert(view.loadAfter.enable and view.loadBefore.enable and view.incompatible.enable)
 -- Cancelling a mod with no original rule restores nil, not an empty table.
 view.modsOrderList.selected = 2
 view.sortingRules.mod2 = nil
