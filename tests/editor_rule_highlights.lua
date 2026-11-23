@@ -98,7 +98,7 @@ end
 core.layers.SortingRules = {data = {mod1 = {loadAfter = {'mod2'}, loadBefore = {'mod3'}}}}
 view.sortingRules.mod1 = utils:deepCopy(core.layers.SortingRules.data.mod1)
 view.modsOrderList.selected = 1
-view.loadAfter = {}; view.loadBefore = {}; view.incompatible = {}; view.modeApplyBtn = {}; view.modeCancelBtn = {}
+view.loadAfter = {}; view.loadBefore = {}; view.incompatible = {}; view.modeApplyBtn = {}; view.modeCancelBtn = {}; view.simulateBtn = {}
 view.editingModeList = {items = {}, clear = view.infoList.clear, addItem = view.infoList.addItem, clears = 0}
 ISScrollingListBox = {onMouseDown = function(box, x) box.selected = x end}
 view.modsOrderList.rowAt = function(_, x) return x end
@@ -198,4 +198,32 @@ local badgeList = {width = 300, drawRect = function() end,
 view:drawRuleBadges(badgeList, 0, {height = 20, item = {modId = 'mod1'}})
 assert(letters.A and letters.B and letters.I)
 assert(letters.A < letters.B and letters.B < letters.I)
+local sorter = require(root .. 'Core/2_SortingCore')
+local originalRows = view.modsOrderList.items
+view.owner = {modList = {items = originalRows}}
+view.modsOrderList.selected = 1
+view.modsOrderList.ensureVisible = function(self, i) self.visibleIndex = i end
+local calls = 0
+function sorter:sort(rows, rules)
+    calls = calls + 1
+    assert(rows == originalRows and rules == view.sortingRules)
+    return {'mod2', 'mod1'}
+end
+sorter.applyOrder = function() error('Simulation must not write a load-order backup') end
+sorter.warnings = {{title = 'Test', message = 'Warning', layer = 'SortingRules', severity = 'WARNING'}}
+local messages = 0
+view.warningPopup = {addMessage = function() messages = messages + 1 end}
+view:simulate()
+assert(calls == 1 and messages == 1)
+assert(view.modsOrderList.items[1].item.modId == 'mod2')
+assert(view.modsOrderList.items[2].index == 2)
+assert(view.modsOrderList.selected == 2 and view.modsOrderList.visibleIndex == 2)
+assert(view.owner.modList.items == originalRows and originalRows[1].item.modId == 'mod1')
+assert(view.modsOrderList.foundCounter == 0)
+view:onEditModeClick(view.loadAfter)
+assert(not view.simulateBtn.enable)
+view:simulate()
+assert(calls == 1)
+view:cancelMode()
+assert(view.simulateBtn.enable)
 print('editor_rule_highlights: OK')

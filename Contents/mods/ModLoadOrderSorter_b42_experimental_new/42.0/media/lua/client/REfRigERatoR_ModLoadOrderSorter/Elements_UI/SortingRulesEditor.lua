@@ -4,6 +4,7 @@ require "ISUI/ISButton"
 require "ISUI/ISComboBox"
 local core = require('REfRigERatoR_ModLoadOrderSorter/Core/Core')
 local utils = require('REfRigERatoR_ModLoadOrderSorter/Core/1_Utils')
+local sorter = require('REfRigERatoR_ModLoadOrderSorter/Core/2_SortingCore')
 local scrollExt = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/ScrollExtensions')
 local popup = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/WarningPopup')
 
@@ -163,6 +164,7 @@ function SortingRulesEditor:finishEdit()
     self.editSelected = nil
     self.modeApplyBtn.enable = false
     self.modeCancelBtn.enable = false
+    self.simulateBtn.enable = true
     self.editingModeList.borderColor = borderColorLight
     for _, style in ipairs(ruleStyles) do
         self[style.button].enable = true
@@ -197,6 +199,7 @@ function SortingRulesEditor:onEditModeClick(button)
     button.borderColor = {r = 1, g = 1, b = 1, a = 1}
     self.modeApplyBtn.enable = true
     self.modeCancelBtn.enable = true
+    self.simulateBtn.enable = false
     for _, candidate in ipairs(ruleStyles) do self[candidate.button].enable = false end
     self.editingModeList.borderColor = {r = style.color.r, g = style.color.g, b = style.color.b, a = 1}
     self:refreshEditingList()
@@ -206,6 +209,45 @@ function SortingRulesEditor:applyMode()
     if not self.editMode then return end
     self.sortingRules[self.editModId] = utils:deepCopy(self.editRule)
     self:finishEdit()
+end
+
+function SortingRulesEditor:simulate()
+    if self.editMode then return end
+    local list = self.modsOrderList
+    local selected = list.items[list.selected]
+    local selectedId = selected and selected.item.modId
+    local sortedIds = sorter:sort(list.items, self.sortingRules)
+    -- Do not call applyOrder: it writes the real load-order backup to disk.
+    local byId, reordered = {}, {}
+    for _, row in ipairs(list.items) do byId[row.item.modId] = row end
+    for _, id in ipairs(sortedIds) do
+        if byId[id] then
+            reordered[#reordered + 1] = byId[id]
+            byId[id] = nil
+        end
+    end
+    for _, row in ipairs(list.items) do
+        if byId[row.item.modId] then
+            reordered[#reordered + 1] = row
+            byId[row.item.modId] = nil
+        end
+    end
+    list.items = reordered
+    list.selected = 0
+    for i, row in ipairs(reordered) do
+        row.index = i
+        row.itemindex = i
+        if row.item.modId == selectedId then list.selected = i end
+    end
+    -- Search results contain row indices from the old order.
+    list.foundItems = {}
+    list.foundIndex = 0
+    list.foundCounter = 0
+    if list.selected > 0 then list:ensureVisible(list.selected) end
+    self:onModClick()
+    for _, warning in ipairs(sorter.warnings or {}) do
+        self.warningPopup:addMessage(warning.title, warning.message, warning.layer, warning.severity)
+    end
 end
 
 function SortingRulesEditor:applyChanges()
@@ -332,6 +374,10 @@ function SortingRulesEditor:createChildren()
 
     self.closeBtn = createButton(PADDING * 2, self.applyBtn.y, BUTTON_HGT * 4, BUTTON_HGT, "Close", self, self.close)
     self:addChild(self.closeBtn)
+
+    self.simulateBtn = createButton((self.width - BUTTON_HGT * 4) / 2, self.applyBtn.y,
+        BUTTON_HGT * 4, BUTTON_HGT, getText("UI_MLOS_Editor_Simulate"), self, self.simulate)
+    self:addChild(self.simulateBtn)
     -- #endregion
 
     -- #region Current mods order (left)
