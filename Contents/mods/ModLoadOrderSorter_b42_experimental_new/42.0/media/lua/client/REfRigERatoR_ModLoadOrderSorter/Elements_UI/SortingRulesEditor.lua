@@ -78,6 +78,31 @@ function SortingRulesEditor:getRuleBackground(modId)
     return nil
 end
 
+-- Use the draft for the edited mod so badges reflect pending additions/removals.
+function SortingRulesEditor:hasRuleTargets(modId, key)
+    local rule = self.editMode and self.editModId == modId and self.editRule
+        or self.sortingRules[modId]
+    return rule ~= nil and rule[key] ~= nil and #rule[key] > 0
+end
+
+function SortingRulesEditor:drawRuleBadges(list, y, item)
+    local size = item.height - 4
+    local gutter = list.vscroll and list.vscroll:getWidth() or 16
+    local right = list.width - gutter - 4
+    -- Fixed slots from left to right: A, B, I.
+    for index, style in ipairs(ruleStyles) do
+        if self:hasRuleTargets(item.item.modId, style.key) then
+            local left = right - size - (index - 1) * (size + 3)
+            local c = style.color
+            list:drawRect(left - 1, y + 1, size + 2, size + 2, 1, .08, .08, .08)
+            list:drawRect(left, y + 2, size, size, 1, c.r, c.g, c.b)
+            local letter = style.key == "loadAfter" and "A" or style.key == "loadBefore" and "B" or "I"
+            list:drawTextCentre(letter, left + size / 2, y + 2 + (size - FONT_HGT_SMALL) / 2,
+                1, 1, 1, 1, UIFont.Small)
+        end
+    end
+end
+
 local function scrollDoDrawItem(self, y, item, alt, background)
     local color = item.color or {r = 0.9, g = 0.9, b = 0.9}
     if background then
@@ -352,6 +377,7 @@ function SortingRulesEditor:createChildren()
     modsOrder.font = UIFont.Small
     modsOrder.doDrawItem = function(list, y, item, alt)
         local nextY = scrollDoDrawItem(list, y, item, alt, self:getRuleBackground(item.item.modId))
+        self:drawRuleBadges(list, y, item)
         if self.editMode and item.item.modId == self.editModId then
             list:drawRectBorder(0, y, list.width, item.height - 1, 1, 1, 1, 1)
         end

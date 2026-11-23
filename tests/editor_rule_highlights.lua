@@ -181,4 +181,21 @@ view:onEditingListMouseDown(list, 166, 5)
 view:applyMode()
 assert(#view.sortingRules.mod1.loadAfter == 1)
 view:onEditingListMouseDown(list, 166, 5) -- safe outside edit mode
+-- Badges describe each row's own rules, including the live edit draft.
+assert(view:hasRuleTargets('mod1', 'loadAfter'))
+assert(not view:hasRuleTargets('mod2', 'loadAfter'))
+view.sortingRules.mod1.incompatibleMods = {}
+assert(not view:hasRuleTargets('mod1', 'incompatibleMods'))
+view:onEditModeClick(view.loadAfter)
+view:onModsOrderMouseDown(view.modsOrderList, 2, 0)
+assert(not view:hasRuleTargets('mod1', 'loadAfter'))
+view:cancelMode()
+assert(view:hasRuleTargets('mod1', 'loadAfter'))
+view.sortingRules.mod1.incompatibleMods = {'disabledMod'}
+local letters = {}
+local badgeList = {width = 300, drawRect = function() end,
+    drawTextCentre = function(_, text, x) letters[text] = x end}
+view:drawRuleBadges(badgeList, 0, {height = 20, item = {modId = 'mod1'}})
+assert(letters.A and letters.B and letters.I)
+assert(letters.A < letters.B and letters.B < letters.I)
 print('editor_rule_highlights: OK')
