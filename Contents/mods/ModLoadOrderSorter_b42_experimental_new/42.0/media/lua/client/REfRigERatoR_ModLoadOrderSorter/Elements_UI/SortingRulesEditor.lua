@@ -59,6 +59,12 @@ end
 
 
 function SortingRulesEditor:getRuleBackground(modId)
+    if self.editMode then
+        if utils:contains(self.editRule[self.editMode.key] or {}, modId) then
+            return self.editMode.color
+        end
+        return nil
+    end
     local list = self.modsOrderList
     local selected = list.items[list.selected]
     local rule = selected and self.sortingRules[selected.item.modId]
@@ -88,27 +94,95 @@ local function scrollDoDrawItem(self, y, item, alt, background)
 end
 
 
-function SortingRulesEditor:onComboBoxChange(combobox_obj)
-    -- if self.applyBtn.enable ~= true then
-    --     -- self.applyBtn.borderColor = borderColorLight
-    --     self.applyBtn.enable = true
-    -- end
+function SortingRulesEditor:onComboBoxChange(combo)
+    local selected = self.modsOrderList.items[self.modsOrderList.selected]
+    if not selected then return end
+    local rule = self.editRule or self.sortingRules[selected.item.modId] or {}
+    if not self.editMode then self.sortingRules[selected.item.modId] = rule end
+    local key = combo == self.loadFirstComboBox and "loadFirst"
+        or combo == self.loadLastComboBox and "loadLast" or "category"
+    local value = combo:getOptionData(combo.selected)
+    if key == "category" and value == "automatic" then value = nil end
+    rule[key] = value
+end
+
+function SortingRulesEditor:refreshEditingList()
+    self.editingModeList:clear()
+    if not self.editMode then return end
+    for _, id in ipairs(self.editRule[self.editMode.key] or {}) do
+        local data = {modId = id, name = id}
+        for _, row in ipairs(self.modsOrderList.items) do
+            if row.item.modId == id then data = row.item; break end
+        end
+        self.editingModeList:addItem("", data)
+    end
+end
+
+function SortingRulesEditor:finishEdit()
+    self.editMode = nil
+    self.editRule = nil
+    self.editModId = nil
+    self.editSelected = nil
+    self.modeApplyBtn.enable = false
+    for _, style in ipairs(ruleStyles) do
+        self[style.button].borderColor = borderColorLight
+    end
+    self:refreshEditingList()
+    self:onModClick()
+end
+
+function SortingRulesEditor:cancelMode()
+    if not self.editMode then return end
+    self.sortingRules[self.editModId] = utils:deepCopy(core.layers.SortingRules.data[self.editModId])
+    self:finishEdit()
 end
 
 function SortingRulesEditor:onEditModeClick(button)
-    -- if button.internal == "LOAD_AFTER" then
-    --     self:switchEditMode(button, { r = 0.5, g = 0.5, b = 0.5, a = 0.5 })
-    -- elseif button.internal == "LOAD_BEFORE" then
-    --     self:switchEditMode(button, { r = 0.5, g = 0.5, b = 0.5, a = 0.5 })
-    -- elseif button.internal == "INCOMPATIBLE" then
-    --     self:switchEditMode(button, { r = 0.5, g = 0.5, b = 0.5, a = 0.5 })
-    -- elseif button.internal == "APPLY" then
-    --     self:applyChanges()
+    local style
+    for _, candidate in ipairs(ruleStyles) do
+        if self[candidate.button] == button then style = candidate; break end
+    end
+    if not style then return end
+    if self.editMode == style then self:cancelMode(); return end
+    if self.editMode then self:cancelMode() end
+    local selected = self.modsOrderList.items[self.modsOrderList.selected]
+    if not selected then return end
+    self.editMode = style
+    self.editModId = selected.item.modId
+    self.editSelected = self.modsOrderList.selected
+    self.editRule = utils:deepCopy(self.sortingRules[self.editModId] or {})
+    self.editRule[style.key] = self.editRule[style.key] or {}
+    button.borderColor = {r = 1, g = 1, b = 1, a = 1}
+    self.modeApplyBtn.enable = true
+    self:refreshEditingList()
+end
 
-    --     self.editModeData = nil
-    --     self:switchEditMode()
-    --     self:onExitSortingRules()
-    -- end
+function SortingRulesEditor:applyMode()
+    if not self.editMode then return end
+    self.sortingRules[self.editModId] = utils:deepCopy(self.editRule)
+    self:finishEdit()
+end
+
+function SortingRulesEditor:applyChanges()
+    if self.editMode then self:applyMode() end
+    if not core.layers.SortingRules:commitEdit(utils:deepCopy(self.sortingRules)) then
+        self.warningPopup:addMessage("Sorting Rules", "Failed to save sorting rules.", "SortingRules", "CRITICAL")
+    end
+end
+
+function SortingRulesEditor:onModsOrderMouseDown(box, x, y)
+    ISScrollingListBox.onMouseDown(box, x, y)
+    if self.editMode then
+        local clicked = box.items[box:rowAt(x, y)]
+        box.selected = self.editSelected
+        if not clicked or clicked.item.modId == self.editModId then return end
+        local ids = self.editRule[self.editMode.key]
+        local index = utils:indexOf(ids, clicked.item.modId)
+        if index then table.remove(ids, index) else table.insert(ids, clicked.item.modId) end
+        self:refreshEditingList()
+    else
+        self:onModClick()
+    end
 end
 
 function SortingRulesEditor:fillMods()
@@ -228,7 +302,7 @@ function SortingRulesEditor:createChildren()
     self.warningPopup:ignoreHeightChange()
     self:addChild(self.warningPopup)
 
-    self.applyBtn = createButton(self.width - PADDING * 2 - BUTTON_HGT * 4, self.height - PADDING - BUTTON_HGT, BUTTON_HGT * 4, BUTTON_HGT, "Apply", self, self.applyMode)
+    self.applyBtn = createButton(self.width - PADDING * 2 - BUTTON_HGT * 4, self.height - PADDING - BUTTON_HGT, BUTTON_HGT * 4, BUTTON_HGT, "Apply", self, self.applyChanges)
     self:addChild(self.applyBtn)
 
     self.closeBtn = createButton(PADDING * 2, self.applyBtn.y, BUTTON_HGT * 4, BUTTON_HGT, "Close", self, self.close)
@@ -246,8 +320,7 @@ function SortingRulesEditor:createChildren()
         return scrollDoDrawItem(list, y, item, alt, self:getRuleBackground(item.item.modId))
     end
     modsOrder.onMouseDown = function(box, x, y)
-        ISScrollingListBox.onMouseDown(box, x, y)
-        self:onModClick()
+        self:onModsOrderMouseDown(box, x, y)
     end
     scrollExt:addSearchEntry(modsOrder, nil, true)
     scrollExt:addBackground(modsOrder, nil, {})
@@ -257,21 +330,21 @@ function SortingRulesEditor:createChildren()
 
     -- Buttons block (center)
     local center_x = modsOrder:getRight() + PADDING
-    local panel = ISPanel:new(center_x, self.modsOrderList.y, innerWitdth * 0.2 + 1, BUTTON_HGT * 3 + PADDING * 4)
+    local panel = ISPanel:new(center_x, self.modsOrderList.y, innerWitdth * 0.2 + 1, BUTTON_HGT * 4 + PADDING * 5)
     panel:initialise()
     panel:instantiate()
     panel.borderColor = borderColorLight
     self:addChild(panel)
 
-    self.loadAfter = createButton(center_x + PADDING, self.modsOrderList.y + PADDING, panel.width - PADDING * 2, BUTTON_HGT, getText("UI_MLOS_SortingRules_load_after_btn"), self, self.onButtonClick)
+    self.loadAfter = createButton(center_x + PADDING, self.modsOrderList.y + PADDING, panel.width - PADDING * 2, BUTTON_HGT, getText("UI_MLOS_SortingRules_load_after_btn"), self, self.onEditModeClick)
     self.loadAfter.internal = "LOAD_AFTER"
     self:addChild(self.loadAfter)
 
-    self.loadBefore = createButton(center_x + PADDING, self.loadAfter:getBottom() + PADDING, self.loadAfter.width, BUTTON_HGT, getText("UI_MLOS_SortingRules_load_before_btn"), self, self.onButtonClick);
+    self.loadBefore = createButton(center_x + PADDING, self.loadAfter:getBottom() + PADDING, self.loadAfter.width, BUTTON_HGT, getText("UI_MLOS_SortingRules_load_before_btn"), self, self.onEditModeClick);
     self.loadBefore.internal = "LOAD_BEFORE"
     self:addChild(self.loadBefore)
 
-    self.incompatible = createButton(center_x + PADDING, self.loadBefore:getBottom() + PADDING, self.loadAfter.width, BUTTON_HGT, getText("UI_MLOS_SortingRules_incompatible_btn"), self, self.onButtonClick);
+    self.incompatible = createButton(center_x + PADDING, self.loadBefore:getBottom() + PADDING, self.loadAfter.width, BUTTON_HGT, getText("UI_MLOS_SortingRules_incompatible_btn"), self, self.onEditModeClick);
     self.incompatible.internal = "INCOMPATIBLE"
     self:addChild(self.incompatible)
 
@@ -282,11 +355,16 @@ function SortingRulesEditor:createChildren()
         button.backgroundColorMouseOver = { r = c.r, g = c.g, b = c.b, a = .6 }
     end
 
+    self.modeApplyBtn = createButton(center_x + PADDING, self.incompatible:getBottom() + PADDING,
+        self.loadAfter.width, BUTTON_HGT, "Apply", self, self.applyMode)
+    self.modeApplyBtn.enable = false
+    self:addChild(self.modeApplyBtn)
+
     local loadTr = {on=getText("UI_MLOS_SortingRules_yes"), off=getText("UI_MLOS_SortingRules_no"), category=getText("UI_MLOS_SortingRules_in_category")}
     local loadFirstTr = getText("UI_MLOS_SortingRules_LoadFirst")
     local loadLastTr = getText("UI_MLOS_SortingRules_LoadLast")
 
-    self.loadFirstComboBox = ISComboBox:new(center_x, self.incompatible:getBottom() + PADDING * 3, innerWitdth * 0.2 - PADDING, BUTTON_HGT, self, self.onComboBoxChange)
+    self.loadFirstComboBox = ISComboBox:new(center_x, self.modeApplyBtn:getBottom() + PADDING * 2, innerWitdth * 0.2 - PADDING, BUTTON_HGT, self, self.onComboBoxChange)
     self:addChild(self.loadFirstComboBox)
 
     self.loadLastComboBox = ISComboBox:new(center_x, self.loadFirstComboBox:getBottom() + PADDING, self.loadFirstComboBox.width, BUTTON_HGT, self, self.onComboBoxChange)
@@ -312,6 +390,8 @@ function SortingRulesEditor:createChildren()
     -- Editing list (right)
     local editingModeList = scrollExt.createList(self, PADDING * 2 + innerWitdth * 0.6, self.modsOrderList.y, innerWitdth * 0.4, innerHeight * 0.5 - PADDING - BUTTON_HGT)
     editingModeList.itemheight = FONT_HGT_SMALL + 8
+    editingModeList.font = UIFont.Small
+    editingModeList.doDrawItem = scrollDoDrawItem
     scrollExt:addTitle(editingModeList, "Mods in selected mode:", nil, nil, nil, - BUTTON_HGT - PADDING)
     scrollExt:addBackground(editingModeList, nil, {})
     editingModeList.borderColor = borderColorLight

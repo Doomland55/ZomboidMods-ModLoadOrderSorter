@@ -86,4 +86,51 @@ assert(view.sortingRules.mod2 == nil) -- displaying defaults must not create rul
 view.modsOrderList.selected = 0
 view:onModClick()
 assert(not view.categoryComboBox.enable and #view.infoList.items == 0)
+local utils = require(root .. 'Core/1_Utils')
+function utils:deepCopy(value)
+    if type(value) ~= 'table' then return value end
+    local result = {}; for k, v in pairs(value) do result[k] = self:deepCopy(v) end
+    return result
+end
+function utils:indexOf(values, target)
+    for i, value in ipairs(values) do if value == target then return i end end
+end
+core.layers.SortingRules = {data = {mod1 = {loadAfter = {'mod2'}, loadBefore = {'mod3'}}}}
+view.sortingRules.mod1 = utils:deepCopy(core.layers.SortingRules.data.mod1)
+view.modsOrderList.selected = 1
+view.loadAfter = {}; view.loadBefore = {}; view.incompatible = {}; view.modeApplyBtn = {}
+view.editingModeList = {items = {}, clear = view.infoList.clear, addItem = view.infoList.addItem, clears = 0}
+ISScrollingListBox = {onMouseDown = function(box, x) box.selected = x end}
+view.modsOrderList.rowAt = function(_, x) return x end
+view:onEditModeClick(view.loadAfter)
+assert(view.editMode.key == 'loadAfter' and view.modeApplyBtn.enable)
+assert(view.editingModeList.items[1].modId == 'mod2')
+assert(view:getRuleBackground('mod3') == nil)
+view:onModsOrderMouseDown(view.modsOrderList, 2, 0)
+assert(view.modsOrderList.selected == 1 and #view.editingModeList.items == 0)
+assert(#view.sortingRules.mod1.loadAfter == 1)
+view:onModsOrderMouseDown(view.modsOrderList, 2, 0)
+assert(#view.editingModeList.items == 1)
+view:onModsOrderMouseDown(view.modsOrderList, 1, 0)
+assert(#view.editingModeList.items == 1) -- no self reference
+view.loadFirstComboBox.selected = 2
+view:onComboBoxChange(view.loadFirstComboBox)
+assert(view.editRule.loadFirst == 'on' and view.sortingRules.mod1.loadFirst == nil)
+view:applyMode()
+assert(not view.editMode and view.sortingRules.mod1.loadFirst == 'on')
+assert(core.layers.SortingRules.data.mod1.loadFirst == nil)
+view:onEditModeClick(view.loadAfter)
+view:onModsOrderMouseDown(view.modsOrderList, 2, 0)
+view:onEditModeClick(view.loadAfter)
+assert(not view.editMode and view.sortingRules.mod1.loadFirst == nil)
+assert(view.sortingRules.mod1.loadAfter[1] == 'mod2')
+view.categoryComboBox.selected = 2
+view:onComboBoxChange(view.categoryComboBox)
+assert(view.sortingRules.mod1.category == 'code')
+view.categoryComboBox.selected = 1
+view:onComboBoxChange(view.categoryComboBox)
+assert(view.sortingRules.mod1.category == nil)
+function core.layers.SortingRules:commitEdit(data) self.data = data; return true end
+view:applyChanges()
+assert(core.layers.SortingRules.data ~= view.sortingRules)
 print('editor_rule_highlights: OK')
