@@ -4,17 +4,10 @@ require "ISUI/ISButton"
 require "ISUI/ISComboBox"
 local core = require('REfRigERatoR_ModLoadOrderSorter/Core/Core')
 local utils = require('REfRigERatoR_ModLoadOrderSorter/Core/1_Utils')
-local sorter = require('REfRigERatoR_ModLoadOrderSorter/Core/2_SortingCore')
 local scrollExt = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/ScrollExtensions')
 local popup = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/WarningPopup')
 
 local SortingRulesEditor = ISPanelJoypad:derive('MLOS_SortingRulesEditor')
-local colors = { 
-    red = { 1, .2, .2 }, 
-    purple = { .75, .3, 1 },
-    yellow = { 1, .75, .2 } }
-
-
 -- Shared by rule targets and their edit buttons (in descending display priority).
 local ruleStyles = {
     { key = "incompatibleMods", button = "incompatible", color = { r = .65, g = .25, b = .85, a = .35 } },
@@ -25,10 +18,8 @@ local ruleStyles = {
 local FONT_HGT_SMALL = getTextManager():getFontHeight(UIFont.Small)
 local BUTTON_HGT = math.max(25, FONT_HGT_SMALL + 3 * 2)
 local PADDING = 10
--- local borderColorLight = {r=0.4, g=0.4, b=0.4, a=0.9}
 local borderColorLight = { r = 1, g = 1, b = 1, a = 0.6 }
 local borderColorDark = { r = 1, g = 1, b = 1, a = 0.2 }
-
 
 function SortingRulesEditor:new(x, y, width, height, modOrderPanel)
     local o = ISPanelJoypad:new(x, y, width, height)
@@ -46,7 +37,6 @@ function SortingRulesEditor:instantiate()
     self:selectTab(self.filesTab)
 end
 
-
 local function createButton(x,y, width, height, name, target, onClick)
     local button = ISButton:new(x, y, width, height, name, target, onClick)
     button:initialise()
@@ -56,7 +46,6 @@ local function createButton(x,y, width, height, name, target, onClick)
     button:setAnchorsTBLR(true, false, true, false)
     return button
 end
-
 
 function SortingRulesEditor:getRuleBackground(modId)
     if self.editMode then
@@ -117,7 +106,6 @@ local function scrollDoDrawItem(self, y, item, alt, background)
     self:drawText(item.item.name, item.height + 6, y + 3, color.r, color.g, color.b, 0.9, self.font )
     return y + item.height
 end
-
 
 function SortingRulesEditor:onComboBoxChange(combo)
     local selected = self.modsOrderList.items[self.modsOrderList.selected]
@@ -250,29 +238,10 @@ function SortingRulesEditor:fillMods()
         local row = items[i].item
         local item = self.modsOrderList:addItem("", {icon=row.icon, modId=row.modId, name=row.name})
         item.color = {r = 0.9, g = 0.9, b = 0.9}
-        -- item.tooltip = self:getTooltip(row.modInfo)
     end
     self.modsOrderList.selected = 0
 
-    -- self.mods:clear()
---     for _, row in ipairs(self.order) do
---         local id = row.item.modId
---         local c = colors[status[id]] or { 1, 1, 1 }
---         if self.mode and id == self.selectedId then
---             c = { .5, .5, .5 }
---         elseif self.mode and utils:contains(self.pending, id) then
---             c = { .3, .85, 1 }
---         end
---         self.mods:addItem(row.item.name, { modId = id, name = row.item.name, color = c })
---         self.mods.items[#self.mods.items].itemindex = #self.mods.items
---         if id == self.selectedId then self.mods.selected = #self.mods.items end
---     end
 end
-
-
-function SortingRulesEditor:updateScrollLists()
-end
-
 
 -- Refresh only on selection/tab events, never from the draw loop.
 function SortingRulesEditor:refreshInfoList()
@@ -338,7 +307,6 @@ function SortingRulesEditor:selectTab(button)
     self:refreshInfoList()
 end
 
-
 function SortingRulesEditor:createChildren()
     local y_offset = 50 + PADDING
     local innerWitdth = self.width - (PADDING * 4)
@@ -365,7 +333,6 @@ function SortingRulesEditor:createChildren()
     self.closeBtn = createButton(PADDING * 2, self.applyBtn.y, BUTTON_HGT * 4, BUTTON_HGT, "Close", self, self.close)
     self:addChild(self.closeBtn)
     -- #endregion
-
 
     -- #region Current mods order (left)
     local modsOrder = scrollExt.createList(self, PADDING * 2, y_offset, innerWitdth * 0.4 - PADDING, innerHeight)
@@ -454,8 +421,6 @@ function SortingRulesEditor:createChildren()
     self.loadLastComboBox.enable = false
     self.categoryComboBox.enable = false
 
-
-
     -- Editing list (right)
     local editingModeList = scrollExt.createList(self, PADDING * 2 + innerWitdth * 0.6, self.modsOrderList.y, innerWitdth * 0.4, innerHeight * 0.5 - PADDING - BUTTON_HGT)
     editingModeList.itemheight = FONT_HGT_SMALL + 8
@@ -484,7 +449,6 @@ function SortingRulesEditor:createChildren()
     editingModeList.borderColor = borderColorLight
     self.editingModeList = editingModeList
 
-
     -- #region info section
     self.filesTab = createButton(center_x, y_offset + innerHeight * 0.5 + PADDING, BUTTON_HGT * 4, BUTTON_HGT, "Files", self, self.selectTab)
     self.filesTab.internal = "FILES_TAB"
@@ -508,41 +472,7 @@ function SortingRulesEditor:createChildren()
 
     --#endregion
 
-    -- self:fillModList()
-    -- self:selectTab(self.filesTab)
 end
-
--- function SortingRulesEditor:createChildren()
---     local w = math.floor((self.width - 40) / 3)
---     local x1, x2, x3 = 10, 20 + w, 30 + 2 * w
---     local top, bottom = 65, self.height - 50
-
---     self.mods = list(self, x1, top, w, bottom - top, self.selectMod)
---     scroll:addSearchEntry(self.mods, -50)
---     self.modeButtons = {}
---     for i, mode in ipairs({ 'loadAfter', 'loadBefore', 'incompatibleMods' }) do
---         local b = button(self, x2, top + (i - 1) * 30, w, mode, function(owner) owner:toggleMode(mode) end)
---         self.modeButtons[#self.modeButtons + 1] = b
---     end
---     self.applyButton = button(self, x2, top + 100, w / 2 - 3, 'Apply', self.applyMode)
---     self.cancelButton = button(self, x2 + w / 2 + 3, top + 100, w / 2 - 3, 'Cancel', self.cancelMode)
---     local cats = { 'automatic' }
---     for _, cat in ipairs(core.rawCategoryOrder) do table.insert(cats, cat) end
---     self.category = combo(self, x2, top + 155, w, cats, 'category'); self.categories = cats
---     self.first = combo(self, x2, top + 210, w, { 'off', 'on', 'category' }, 'loadFirst')
---     self.last = combo(self, x2, top + 265, w, { 'off', 'on', 'category' }, 'loadLast')
-    
---     local h = math.floor((bottom - top - 60) / 3)
---     self.ruleList = list(self, x3, top + 20, w, h, self.navigate, true)
---     self.requiredList = list(self, x3, top + 40 + h, w, h, self.navigate, true)
---     self.requiredByList = list(self, x3, top + 60 + 2 * h, w, h, self.navigate, true)
---     button(self, x1, self.height - 35, w, 'Exit without saving', self.discard)
---     button(self, x2, self.height - 35, w, 'Simulate', self.simulate)
---     button(self, x3, self.height - 35, w, 'Save and exit', self.save)
---     self.warningPopup = popup:new(self.width - 60, 5); self:addChild(self.warningPopup)
---     self:refresh()
-
--- end
 
 function SortingRulesEditor:prerender()
     ISPanelJoypad.prerender(self)
@@ -553,103 +483,6 @@ function SortingRulesEditor:prerender()
     end
     self:drawTextCentre(title, self.width * 0.5, PADDING * 2, 1, 1, 1, 1, UIFont.Large)
 end
-
--- function SortingRulesEditor:selectMod(id)
---     if self.mode then
---         if id == self.selectedId then return end
---         local at = utils:indexOf(self.pending, id)
---         if at then table.remove(self.pending, at) else table.insert(self.pending, id) end
---     else
---         self.selectedId = id
---     end
---     self:refresh()
--- end
-
--- function SortingRulesEditor:navigate(id)
---     if self.mode then return end
---     local found = false
---     for _, row in ipairs(self.order) do
---         if row.item.modId == id then
---             found = true; break
---         end
---     end
---     if not found then return end
---     self.selectedId = id
---     self:refresh()
---     for i, row in ipairs(self.mods.items) do
---         if row.item.modId == id then
---             self.mods:ensureVisible(i); break
---         end
---     end
--- end
-
--- function SortingRulesEditor:toggleMode(mode)
---     if not self.selectedId then return end
---     if self.mode == mode then
---         self:cancelMode(); return
---     end
---     self.mode = mode
---     self.pending = utils:deepCopy((self.working[self.selectedId] or {})[mode] or {})
---     self:refresh()
--- end
-
--- function SortingRulesEditor:cancelMode()
---     self.mode = nil; self.pending = nil; self:refresh()
--- end
-
--- function SortingRulesEditor:applyMode()
---     if not self.mode then return end
---     local rule = self.working[self.selectedId] or {}; self.working[self.selectedId] = rule
---     rule[self.mode] = utils:deepCopy(self.pending)
---     self:cancelMode()
--- end
-
--- function SortingRulesEditor:refresh()
---     local status = sorter:validate(self.order, self.working)
---     local info = core.layers.modInfo.data
---     self.mods:clear()
---     for _, row in ipairs(self.order) do
---         local id = row.item.modId
---         local c = colors[status[id]] or { 1, 1, 1 }
---         if self.mode and id == self.selectedId then
---             c = { .5, .5, .5 }
---         elseif self.mode and utils:contains(self.pending, id) then
---             c = { .3, .85, 1 }
---         end
---         self.mods:addItem(row.item.name, { modId = id, name = row.item.name, color = c })
---         self.mods.items[#self.mods.items].itemindex = #self.mods.items
---         if id == self.selectedId then self.mods.selected = #self.mods.items end
---     end
---     local function fill(box, ids)
---         box:clear()
---         for _, id in ipairs(ids or {}) do
---             box:addItem((info[id] and info[id].name) or id, { modId = id, name = (info[id] and info[id].name) or id })
---         end
---     end
---     local data = info[self.selectedId] or {}
---     fill(self.ruleList, self.pending)
---     fill(self.requiredList, data.requirements)
---     fill(self.requiredByList, data.requiredBy)
---     local rule = self.working[self.selectedId] or {}
---     self.refreshing = true
---     self.category.selected = utils:indexOf(self.categories, rule.category or 'automatic') or 1
---     self.first.selected = utils:indexOf({ 'off', 'on', 'category' }, rule.loadFirst or 'off') or 1
---     self.last.selected = utils:indexOf({ 'off', 'on', 'category' }, rule.loadLast or 'off') or 1
---     self.refreshing = false
---     for _, b in ipairs(self.modeButtons) do b.enable = self.selectedId ~= nil end
---     self.applyButton.enable = self.mode ~= nil; self.cancelButton.enable = self.mode ~= nil
---     self.category.enable = self.selectedId ~= nil; self.first.enable = self.selectedId ~= nil; self.last.enable = self
---         .selectedId ~= nil
---     self.mods.foundItems = {}; self.mods.foundIndex = 0; self.mods.foundCounter = 0
--- end
-
--- function SortingRulesEditor:simulate()
---     local ids = sorter:sort(self.order, self.working)
---     local rows = {}; for _, row in ipairs(self.order) do rows[row.item.modId] = row end
---     self.order = {}; for _, id in ipairs(ids) do table.insert(self.order, rows[id]) end
---     for _, w in ipairs(sorter.warnings) do self.warningPopup:addMessage(w.title, w.message, w.layer, w.severity) end
---     self:refresh()
--- end
 
 function SortingRulesEditor:close()
     self:setVisible(false)
