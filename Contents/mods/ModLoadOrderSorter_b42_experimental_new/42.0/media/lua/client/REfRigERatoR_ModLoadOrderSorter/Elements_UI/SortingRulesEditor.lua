@@ -19,6 +19,7 @@ local ruleStyles = {
 local FONT_HGT_SMALL = getTextManager():getFontHeight(UIFont.Small)
 local BUTTON_HGT = math.max(25, FONT_HGT_SMALL + 3 * 2)
 local PADDING = 10
+local DEFAULT_TEXT_COLOR = {r = 0.9, g = 0.9, b = 0.9}
 local borderColorLight = { r = 1, g = 1, b = 1, a = 0.6 }
 local borderColorDark = { r = 1, g = 1, b = 1, a = 0.2 }
 
@@ -48,24 +49,32 @@ local function createButton(x,y, width, height, name, target, onClick)
     return button
 end
 
-function SortingRulesEditor:getRuleBackground(modId)
+-- Rebuilt on selection/edit events, not for each visible row on every frame.
+function SortingRulesEditor:refreshRuleBackgrounds()
+    local backgrounds = {}
+    self.ruleBackgrounds = backgrounds
     if self.editMode then
-        if utils:contains(self.editRule[self.editMode.key] or {}, modId) then
-            return self.editMode.color
+        for _, id in ipairs(self.editRule[self.editMode.key]) do
+            backgrounds[id] = self.editMode.color
         end
-        return nil
+        return
     end
     local list = self.modsOrderList
     local selected = list.items[list.selected]
     local rule = selected and self.sortingRules[selected.item.modId]
-    if not rule then return nil end
-
+    if not rule then return end
     for _, style in ipairs(ruleStyles) do
-        if utils:contains(rule[style.key] or {}, modId) then
-            return style.color
+        local ids = rule[style.key]
+        if ids then
+            for _, id in ipairs(ids) do
+                if not backgrounds[id] then backgrounds[id] = style.color end
+            end
         end
     end
-    return nil
+end
+
+function SortingRulesEditor:getRuleBackground(modId)
+    return self.ruleBackgrounds and self.ruleBackgrounds[modId]
 end
 
 -- Use the draft for the edited mod so badges reflect pending additions/removals.
@@ -75,27 +84,28 @@ function SortingRulesEditor:hasRuleTargets(modId, key)
     return rule ~= nil and rule[key] ~= nil and #rule[key] > 0
 end
 
+local function drawDependencyBadge(list, y, size, letter, left)
+    list:drawRect(left, y + 2, size, size, 1, .12, .12, .12)
+    list:drawRectBorder(left, y + 2, size, size, .9, .7, .7, .7)
+    list:drawTextCentre(letter, left + size / 2, y + 2 + (size - FONT_HGT_SMALL) / 2,
+        .9, .9, .9, 1, UIFont.Small)
+end
+
 function SortingRulesEditor:drawRuleBadges(list, y, item)
     local size = item.height - 4
     local gutter = list.vscroll and list.vscroll:getWidth() or 16
     local right = list.width - gutter - 4
     -- Fixed slots from left to right: R, D | A, B, I.
     local layer = core.layers.ModsInfo
-    local info = layer and layer.data[item.item.modId] or {}
-    local hasRequired = #(info.requirements or {}) > 0
-    local hasDependents = #(info.requiredBy or {}) > 0
+    local info = layer and layer.data[item.item.modId]
+    local hasRequired = info and info.requirements and #info.requirements > 0
+    local hasDependents = info and info.requiredBy and #info.requiredBy > 0
     if hasRequired or hasDependents then
         local separator = right - 3 * (size + 3) - 3
         list:drawRect(separator - 2, y + 1, 5, size + 2, 1, .08, .08, .08)
         list:drawRect(separator, y + 3, 1, size - 2, .8, .7, .7, .7)
-        local function drawDependencyBadge(letter, left)
-            list:drawRect(left, y + 2, size, size, 1, .12, .12, .12)
-            list:drawRectBorder(left, y + 2, size, size, .9, .7, .7, .7)
-            list:drawTextCentre(letter, left + size / 2, y + 2 + (size - FONT_HGT_SMALL) / 2,
-                .9, .9, .9, 1, UIFont.Small)
-        end
-        if hasDependents then drawDependencyBadge("D", separator - size - 6) end
-        if hasRequired then drawDependencyBadge("R", separator - 2 * size - 9) end
+        if hasDependents then drawDependencyBadge(list, y, size, "D", separator - size - 6) end
+        if hasRequired then drawDependencyBadge(list, y, size, "R", separator - 2 * size - 9) end
     end
     for index, style in ipairs(ruleStyles) do
         if self:hasRuleTargets(item.item.modId, style.key) then
@@ -111,7 +121,7 @@ function SortingRulesEditor:drawRuleBadges(list, y, item)
 end
 
 local function scrollDoDrawItem(self, y, item, alt, background)
-    local color = item.color or {r = 0.9, g = 0.9, b = 0.9}
+    local color = item.color or DEFAULT_TEXT_COLOR
     if background then
         self:drawRect(0, y, self.width, item.height - 1, background.a, background.r, background.g, background.b)
     end
@@ -138,13 +148,11 @@ function SortingRulesEditor:onComboBoxChange(combo)
 end
 
 function SortingRulesEditor:refreshEditingList()
+    self:refreshRuleBackgrounds()
     self.editingModeList:clear()
     if not self.editMode then return end
     for _, id in ipairs(self.editRule[self.editMode.key] or {}) do
-        local data = {modId = id, name = id}
-        for _, row in ipairs(self.modsOrderList.items) do
-            if row.item.modId == id then data = row.item; break end
-        end
+        local data = self.modsById[id] or {modId = id, name = id}
         self.editingModeList:addItem("", data)
     end
 end
@@ -291,14 +299,17 @@ end
 
 function SortingRulesEditor:fillMods()
     self.modsOrderList:clear()
+    self.modsById = {}
 
     local items = self.owner.modList.items
     for i=1, #items do
         local row = items[i].item
         local item = self.modsOrderList:addItem("", {icon=row.icon, modId=row.modId, name=row.name})
-        item.color = {r = 0.9, g = 0.9, b = 0.9}
+        self.modsById[row.modId] = item.item
+        item.color = DEFAULT_TEXT_COLOR
     end
     self.modsOrderList.selected = 0
+    self:refreshRuleBackgrounds()
 
 end
 
@@ -342,6 +353,7 @@ local function selectComboValue(combo, value)
 end
 
 function SortingRulesEditor:onModClick()
+    self:refreshRuleBackgrounds()
     local selected = self.modsOrderList.items[self.modsOrderList.selected]
     local rule = selected and self.sortingRules[selected.item.modId] or {}
     rule = rule or {}
@@ -419,7 +431,6 @@ function SortingRulesEditor:createChildren()
     scrollExt:addSearchEntry(modsOrder, nil, true)
     scrollExt:addBackground(modsOrder, nil, {})
     self.modsOrderList = modsOrder
-    self:addChild(self.modsOrderList)
     -- #endregion
 
     -- Buttons block (center)

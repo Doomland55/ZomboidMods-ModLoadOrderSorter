@@ -21,6 +21,7 @@ local view = setmetatable({
     modsOrderList = {selected = 1, items = {{item = {modId = 'mod1'}}, {item = {modId = 'mod2'}}}},
     sortingRules = {mod1 = {loadAfter = {'mod2'}, loadBefore = {'mod3', 'mod4'}, incompatibleMods = {'mod10'}}},
 }, {__index = editor})
+view:refreshRuleBackgrounds()
 local blue = assert(view:getRuleBackground('mod2'))
 local green = assert(view:getRuleBackground('mod3'))
 local purple = assert(view:getRuleBackground('mod10'))
@@ -30,17 +31,25 @@ assert(purple.r > purple.g and purple.b > purple.g)
 assert(view:getRuleBackground('mod4') == green)
 assert(view:getRuleBackground('mod1') == nil)
 assert(view:getRuleBackground('unknown') == nil)
+local cached = view.ruleBackgrounds
+for i = 1, 100 do assert(view:getRuleBackground('mod2') == blue) end
+assert(view.ruleBackgrounds == cached)
 -- Overlapping rules have deterministic priority.
 view.sortingRules.mod1.loadBefore = {'mod2'}
+view:refreshRuleBackgrounds()
 assert(view:getRuleBackground('mod2') == green)
 view.sortingRules.mod1.incompatibleMods = {'mod2'}
+view:refreshRuleBackgrounds()
 assert(view:getRuleBackground('mod2') == purple)
 -- Selection and working-copy changes take effect without cached stale colors.
 view.modsOrderList.selected = 2
+view:refreshRuleBackgrounds()
 assert(view:getRuleBackground('mod2') == nil)
 view.sortingRules.mod2 = {loadAfter = {'mod1'}}
+view:refreshRuleBackgrounds()
 assert(view:getRuleBackground('mod1') == blue)
 view.modsOrderList.selected = 0
+view:refreshRuleBackgrounds()
 assert(view:getRuleBackground('mod1') == nil)
 local core = require(root .. 'Core/Core')
 core.layers = {
@@ -98,6 +107,8 @@ end
 core.layers.SortingRules = {data = {mod1 = {loadAfter = {'mod2'}, loadBefore = {'mod3'}}}}
 view.sortingRules.mod1 = utils:deepCopy(core.layers.SortingRules.data.mod1)
 view.modsOrderList.selected = 1
+view.modsById = {}
+for _, row in ipairs(view.modsOrderList.items) do view.modsById[row.item.modId] = row.item end
 view.loadAfter = {}; view.loadBefore = {}; view.incompatible = {}; view.modeApplyBtn = {}; view.modeCancelBtn = {}; view.simulateBtn = {}
 view.editingModeList = {items = {}, clear = view.infoList.clear, addItem = view.infoList.addItem, clears = 0}
 ISScrollingListBox = {onMouseDown = function(box, x) box.selected = x end}
@@ -105,9 +116,12 @@ view.modsOrderList.rowAt = function(_, x) return x end
 view:onEditModeClick(view.loadAfter)
 assert(view.editMode.key == 'loadAfter' and view.modeApplyBtn.enable)
 assert(view.editingModeList.items[1].modId == 'mod2')
+assert(view.editingModeList.items[1] == view.modsById.mod2)
+assert(view:getRuleBackground('mod2') == blue)
 assert(view:getRuleBackground('mod3') == nil)
 view:onModsOrderMouseDown(view.modsOrderList, 2, 0)
 assert(view.modsOrderList.selected == 1 and #view.editingModeList.items == 0)
+assert(view:getRuleBackground('mod2') == nil)
 assert(#view.sortingRules.mod1.loadAfter == 1)
 view:onModsOrderMouseDown(view.modsOrderList, 2, 0)
 assert(#view.editingModeList.items == 1)
@@ -125,6 +139,7 @@ view:cancelMode()
 assert(not view.editMode and view.sortingRules.mod1.loadFirst == 'on')
 assert(view.editOriginalRule == nil)
 assert(view.sortingRules.mod1.loadAfter[1] == 'mod2')
+assert(view:getRuleBackground('mod2') == blue)
 -- All mode buttons are disabled; even direct calls cannot switch modes.
 assert(view.loadAfter.enable and view.loadBefore.enable and view.incompatible.enable)
 assert(not view.modeApplyBtn.enable and not view.modeCancelBtn.enable)
@@ -240,4 +255,19 @@ view:simulate()
 assert(calls == 1)
 view:cancelMode()
 assert(view.simulateBtn.enable)
+-- fillMods builds an independent ID index and replaces it on refilling.
+local filled = setmetatable({owner = {modList = {items = {
+    {item = {modId = 'active', name = 'Active mod', icon = 'icon.png'}}}}},
+    sortingRules = {}, modsOrderList = {
+        clear = function(self) self.items = {} end,
+        addItem = function(self, _, data)
+            local row = {item = data}; self.items[#self.items + 1] = row; return row
+        end,
+    }}, {__index = editor})
+filled:fillMods()
+assert(filled.modsById.active == filled.modsOrderList.items[1].item)
+assert(filled.modsById.active ~= filled.owner.modList.items[1].item)
+filled.owner.modList.items = {}
+filled:fillMods()
+assert(filled.modsById.active == nil and next(filled.ruleBackgrounds) == nil)
 print('editor_rule_highlights: OK')
