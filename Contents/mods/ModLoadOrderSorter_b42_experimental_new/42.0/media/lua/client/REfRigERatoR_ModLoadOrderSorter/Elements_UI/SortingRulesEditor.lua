@@ -15,6 +15,13 @@ local colors = {
     yellow = { 1, .75, .2 } }
 
 
+-- Shared by rule targets and their edit buttons (in descending display priority).
+local ruleStyles = {
+    { key = "incompatibleMods", button = "incompatible", color = { r = .65, g = .25, b = .85, a = .35 } },
+    { key = "loadBefore", button = "loadBefore", color = { r = .2, g = .7, b = .3, a = .35 } },
+    { key = "loadAfter", button = "loadAfter", color = { r = .2, g = .4, b = .9, a = .35 } },
+}
+
 local FONT_HGT_SMALL = getTextManager():getFontHeight(UIFont.Small)
 local BUTTON_HGT = math.max(25, FONT_HGT_SMALL + 3 * 2)
 local PADDING = 10
@@ -51,8 +58,25 @@ local function createButton(x,y, width, height, name, target, onClick)
 end
 
 
-local function scrollDoDrawItem(self, y, item, alt)
+function SortingRulesEditor:getRuleBackground(modId)
+    local list = self.modsOrderList
+    local selected = list.items[list.selected]
+    local rule = selected and self.sortingRules[selected.item.modId]
+    if not rule then return nil end
+
+    for _, style in ipairs(ruleStyles) do
+        if utils:contains(rule[style.key] or {}, modId) then
+            return style.color
+        end
+    end
+    return nil
+end
+
+local function scrollDoDrawItem(self, y, item, alt, background)
     local color = item.color or {r = 0.9, g = 0.9, b = 0.9}
+    if background then
+        self:drawRect(0, y, self.width, item.height - 1, background.a, background.r, background.g, background.b)
+    end
     if self.selected == item.index then
         self:drawRect(0, y, self.width, item.height - 1, .3, .6, .6, .6)
     end
@@ -195,7 +219,9 @@ function SortingRulesEditor:createChildren()
     scrollExt:addTitle(modsOrder, "Mods Order:", nil, nil, nil, - BUTTON_HGT - PADDING)
     modsOrder.borderColor = borderColorLight
     modsOrder.font = UIFont.Small
-    modsOrder.doDrawItem = scrollDoDrawItem
+    modsOrder.doDrawItem = function(list, y, item, alt)
+        return scrollDoDrawItem(list, y, item, alt, self:getRuleBackground(item.item.modId))
+    end
     -- modsOrder.onMouseDown = function(box, xx, yy)
     --     ISScrollingListBox.onMouseDown(box, xx, yy)
     --     local row = box.items[box.selected]
@@ -227,6 +253,12 @@ function SortingRulesEditor:createChildren()
     self.incompatible.internal = "INCOMPATIBLE"
     self:addChild(self.incompatible)
 
+    for _, style in ipairs(ruleStyles) do
+        local button = self[style.button]
+        local c = style.color
+        button.backgroundColor = { r = c.r, g = c.g, b = c.b, a = c.a }
+        button.backgroundColorMouseOver = { r = c.r, g = c.g, b = c.b, a = .6 }
+    end
 
     local loadTr = {on=getText("UI_MLOS_SortingRules_yes"), off=getText("UI_MLOS_SortingRules_no"), category=getText("UI_MLOS_SortingRules_in_category")}
     local loadFirstTr = getText("UI_MLOS_SortingRules_LoadFirst")
