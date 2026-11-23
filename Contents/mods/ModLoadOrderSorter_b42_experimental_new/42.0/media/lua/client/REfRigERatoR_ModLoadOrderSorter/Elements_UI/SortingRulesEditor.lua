@@ -2,6 +2,8 @@ require "ISUI/ISPanelJoypad"
 require "ISUI/ISScrollingListBox"
 require "ISUI/ISButton"
 require "ISUI/ISComboBox"
+require "ISUI/ISToolTip"
+require "ISUI/ISModalDialog"
 local core = require('REfRigERatoR_ModLoadOrderSorter/Core/Core')
 local utils = require('REfRigERatoR_ModLoadOrderSorter/Core/1_Utils')
 local sorter = require('REfRigERatoR_ModLoadOrderSorter/Core/2_SortingCore')
@@ -29,6 +31,8 @@ function SortingRulesEditor:new(x, y, width, height, modOrderPanel)
     o.owner = modOrderPanel
     o.sortingRules = core.layers.SortingRules:beginEdit()  -- currentRules list
 
+    o.savedRules = utils:deepCopy(o.sortingRules)
+    o.dirtyRules = {}
     o.backgroundColor = { r = 0, g = 0, b = 0, a = .95 }
     return o
 end
@@ -47,6 +51,32 @@ local function createButton(x,y, width, height, name, target, onClick)
     button:ignoreHeightChange()
     button:setAnchorsTBLR(true, false, true, false)
     return button
+end
+
+local EMPTY_RULE = {}
+local function sameRule(a, b)
+    a, b = a or EMPTY_RULE, b or EMPTY_RULE
+    if (a.loadFirst or "off") ~= (b.loadFirst or "off")
+        or (a.loadLast or "off") ~= (b.loadLast or "off") or a.category ~= b.category then return false end
+    for _, style in ipairs(ruleStyles) do
+        local left, right = a[style.key] or EMPTY_RULE, b[style.key] or EMPTY_RULE
+        if #left ~= #right then return false end
+        local ids = {}
+        for _, id in ipairs(left) do ids[id] = (ids[id] or 0) + 1 end
+        for _, id in ipairs(right) do
+            if not ids[id] or ids[id] == 0 then return false end
+            ids[id] = ids[id] - 1
+        end
+    end
+    return true
+end
+
+function SortingRulesEditor:updateDirty(modId)
+    self.badgeTooltipCache = nil
+    local rule = self.editMode and self.editModId == modId and self.editRule or self.sortingRules[modId]
+    self.dirtyRules[modId] = not sameRule(rule, self.savedRules[modId]) or nil
+    self.hasUnsavedChanges = next(self.dirtyRules) ~= nil
+    self.applyBtn.enable = self.hasUnsavedChanges
 end
 
 -- Rebuilt on selection/edit events, not for each visible row on every frame.
@@ -89,6 +119,83 @@ local function badgeGeometry(list, height)
     local size = height - 4
     local gutter = list.vscroll and list.vscroll:getWidth() or 16
     return list.width - gutter - 4, size
+end
+
+function SortingRulesEditor:getBadgeTooltip(list, x, y)
+    local index = list:rowAt(x, y)
+    local row = index and list.items[index]
+    if not row then return end
+    local right, size = badgeGeometry(list, row.height)
+    local top = (index - 1) * list.itemheight + list:getYScroll() + 2
+    if y < top or y >= top + size then return end
+    local id, key, label = row.item.modId
+    for i, style in ipairs(ruleStyles) do
+        local left = right - size - (i - 1) * (size + 3)
+        if x >= left and x < left + size then
+            key, label = style.key, style.letter
+            break
+        end
+    end
+    local separator = right - 3 * (size + 3) - 3
+    if x >= separator - size - 6 and x < separator - 6 then key, label = "requiredBy", "D" end
+    if x >= separator - 2 * size - 9 and x < separator - size - 9 then key, label = "requirements", "R" end
+    if not key then return end
+    local info = core.layers.ModsInfo
+    local data = (label == "R" or label == "D") and info and info.data[id]
+        or (label ~= "R" and label ~= "D" and
+            (self.editMode and self.editModId == id and self.editRule or self.sortingRules[id]))
+    local ids = data and data[key]
+    if not ids or #ids == 0 then return end
+    local cache = self.badgeTooltipCache
+    if cache and cache.ids == ids and cache.id == id and cache.key == key then return cache.text end
+    local lines = {getText("UI_MLOS_Editor_Badge_" .. label, tostring(#ids))}
+    for _, target in ipairs(ids) do
+        local mod = info and info.data[target]
+        local name = mod and mod.name or target
+        -- Tooltip descriptions use rich text; mod metadata must remain plain text.
+        lines[#lines + 1] = tostring(name):gsub("<", "("):gsub(">", ")")
+    end
+    local text = table.concat(lines, " <LINE> ")
+    self.badgeTooltipCache = {ids = ids, id = id, key = key, text = text}
+    return text
+end
+
+function SortingRulesEditor:hideBadgeTooltip()
+    if self.badgeTooltip then
+        self.badgeTooltip:setVisible(false)
+        self.badgeTooltip:removeFromUIManager()
+    end
+end
+
+function SortingRulesEditor:updateBadgeTooltip(list)
+    local text = self:getBadgeTooltip(list, list:getMouseX(), list:getMouseY())
+    if not text then self:hideBadgeTooltip(); return end
+    if not self.badgeTooltip then
+        self.badgeTooltip = ISToolTip:new()
+        self.badgeTooltip:initialise()
+        self.badgeTooltip:setVisible(false)
+        self.badgeTooltip:setAlwaysOnTop(true)
+    end
+    local tooltip = self.badgeTooltip
+    tooltip.description = text
+    tooltip:setX(getMouseX() + 16)
+    tooltip:setY(getMouseY() + 16)
+    if not tooltip:getIsVisible() then tooltip:addToUIManager(); tooltip:setVisible(true) end
+end
+
+function SortingRulesEditor:onInfoListMouseDown(list, x, y)
+    if self.editMode or list.selectedTab == "FILES_TAB" then return end
+    local index = list:rowAt(x, y)
+    local row = index and list.items[index]
+    if not row then return end
+    for i, mod in ipairs(self.modsOrderList.items) do
+        if mod.item.modId == row.item.modId then
+            self.modsOrderList.selected = i
+            self.modsOrderList:ensureVisible(i)
+            self:onModClick()
+            return
+        end
+    end
 end
 
 local function drawDependencyBadge(list, y, size, letter, left)
@@ -149,12 +256,14 @@ function SortingRulesEditor:onComboBoxChange(combo)
     local value = combo:getOptionData(combo.selected)
     if key == "category" and value == "automatic" then value = nil end
     rule[key] = value
+    self:updateDirty(selected.item.modId)
 end
 
 function SortingRulesEditor:refreshEditingList()
     self.editingModeList:clear()
     if not self.editMode then return end
     self:refreshRuleBackgrounds()
+    self:updateDirty(self.editModId)
     for _, id in ipairs(self.editRule[self.editMode.key]) do
         local data = self.modsById[id] or {modId = id, name = id}
         self.editingModeList:addItem("", data)
@@ -184,6 +293,7 @@ function SortingRulesEditor:onEditingListMouseDown(list, x, y)
 end
 
 function SortingRulesEditor:finishEdit()
+    local modId = self.editModId
     self.editMode = nil
     self.editRule = nil
     self.editOriginalRule = nil
@@ -197,6 +307,7 @@ function SortingRulesEditor:finishEdit()
         self[style.button].enable = true
         self[style.button].borderColor = borderColorLight
     end
+    self:updateDirty(modId)
     self:refreshEditingList()
     self:onModClick()
 end
@@ -281,7 +392,12 @@ function SortingRulesEditor:applyChanges()
     if self.editMode then self:applyMode() end
     if not core.layers.SortingRules:commitEdit(utils:deepCopy(self.sortingRules)) then
         self.warningPopup:addMessage("Sorting Rules", "Failed to save sorting rules.", "SortingRules", "CRITICAL")
+        return
     end
+    self.savedRules = utils:deepCopy(self.sortingRules)
+    self.dirtyRules = {}
+    self.hasUnsavedChanges = false
+    self.applyBtn.enable = false
 end
 
 function SortingRulesEditor:onModsOrderMouseDown(box, x, y)
@@ -400,6 +516,7 @@ function SortingRulesEditor:createChildren()
     self:addChild(self.warningPopup)
 
     self.applyBtn = createButton(self.width - PADDING * 2 - BUTTON_HGT * 4, self.height - PADDING - BUTTON_HGT, BUTTON_HGT * 4, BUTTON_HGT, "Apply", self, self.applyChanges)
+    self.applyBtn.enable = false
     self:addChild(self.applyBtn)
 
     self.closeBtn = createButton(PADDING * 2, self.applyBtn.y, BUTTON_HGT * 4, BUTTON_HGT, "Close", self, self.close)
@@ -428,6 +545,11 @@ function SortingRulesEditor:createChildren()
     end
     modsOrder.onMouseDown = function(box, x, y)
         self:onModsOrderMouseDown(box, x, y)
+    end
+    local listUpdate = modsOrder.update
+    modsOrder.update = function(list)
+        if listUpdate then listUpdate(list) end
+        if list:isMouseOver() then self:updateBadgeTooltip(list) else self:hideBadgeTooltip() end
     end
     scrollExt:addSearchEntry(modsOrder, nil, true)
     scrollExt:addBackground(modsOrder, nil, {})
@@ -543,6 +665,7 @@ function SortingRulesEditor:createChildren()
     infoList.doDrawItem = scrollDoDrawItem
     scrollExt:addBackground(infoList, nil, {})
     infoList.borderColor = borderColorLight
+    infoList.onMouseDown = function(list, x, y) self:onInfoListMouseDown(list, x, y) end
     self.infoList = infoList
 
     --#endregion
@@ -556,10 +679,29 @@ function SortingRulesEditor:prerender()
         local row = self.modsOrderList.items[self.editSelected]
         title = getText("UI_MLOS_Editor_Editing", self[self.editMode.button].title, row.item.name)
     end
+    if self.hasUnsavedChanges then title = title .. " *" end
     self:drawTextCentre(title, self.width * 0.5, PADDING * 2, 1, 1, 1, 1, UIFont.Large)
 end
 
 function SortingRulesEditor:close()
+    if self.closeDialog then return end
+    if self.hasUnsavedChanges then
+        self:hideBadgeTooltip()
+        local dialog = ISModalDialog:new(0, 0, 420, 160, getText("UI_MLOS_Editor_Discard"), true,
+            self, function(editor, button)
+                editor.closeDialog = nil
+                if button.internal == "YES" then editor:discardAndClose() end
+            end)
+        self.closeDialog = dialog
+        dialog:initialise()
+        dialog:addToUIManager()
+        return
+    end
+    self:discardAndClose()
+end
+
+function SortingRulesEditor:discardAndClose()
+    self:hideBadgeTooltip()
     self:setVisible(false)
     self.owner:setVisible(true)
     self:removeFromUIManager()

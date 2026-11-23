@@ -1,4 +1,11 @@
 {
+    "UI_MLOS_Editor_Discard": "Закрыть редактор без сохранения изменений правил?",
+    "UI_MLOS_Editor_Badge_R": "R — обязательные зависимости: %1",
+    "UI_MLOS_Editor_Badge_D": "D — зависимые моды: %1",
+    "UI_MLOS_Editor_Badge_A": "A — загружать после: %1",
+    "UI_MLOS_Editor_Badge_B": "B — загружать перед: %1",
+    "UI_MLOS_Editor_Badge_I": "I — несовместимые моды: %1",
+
     "UI_MLOS_Editor_Simulate": "Симуляция",
     "UI_MLOS_Editor_ClickHint": "Клик по моду — добавить / убрать",
     "UI_MLOS_Editor_Cancel": "Отмена",

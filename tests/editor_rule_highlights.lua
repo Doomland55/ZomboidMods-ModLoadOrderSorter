@@ -5,7 +5,7 @@ local root = 'REfRigERatoR_ModLoadOrderSorter/'
 ISPanelJoypad = {derive = function() return {} end}
 UIFont = {Small = 1}
 getTextManager = function() return {getFontHeight = function() return 12 end} end
-for _, name in ipairs({'ISUI/ISPanelJoypad', 'ISUI/ISScrollingListBox', 'ISUI/ISButton', 'ISUI/ISComboBox',
+for _, name in ipairs({'ISUI/ISPanelJoypad', 'ISUI/ISScrollingListBox', 'ISUI/ISButton', 'ISUI/ISComboBox', 'ISUI/ISToolTip', 'ISUI/ISModalDialog',
     root .. 'Core/Core', root .. 'Core/2_SortingCore', root .. 'Elements_UI/ScrollExtensions',
     root .. 'Elements_UI/WarningPopup'}) do
     package.preload[name] = function() return {} end
@@ -16,8 +16,10 @@ package.preload[root .. 'Core/1_Utils'] = function()
         return false
     end}
 end
+getText = function(key, value) return key .. ': ' .. tostring(value or '') end
 local editor = require(root .. 'Elements_UI/SortingRulesEditor')
 local view = setmetatable({
+    savedRules = {}, dirtyRules = {}, applyBtn = {},
     modsOrderList = {selected = 1, items = {{item = {modId = 'mod1'}}, {item = {modId = 'mod2'}}}},
     sortingRules = {mod1 = {loadAfter = {'mod2'}, loadBefore = {'mod3', 'mod4'}, incompatibleMods = {'mod10'}}},
 }, {__index = editor})
@@ -286,4 +288,87 @@ assert(filled.modsById.active ~= filled.owner.modList.items[1].item)
 filled.owner.modList.items = {}
 filled:fillMods()
 assert(filled.modsById.active == nil and next(filled.ruleBackgrounds) == nil)
+-- Dirty tracking compares effective rules with the last successful save.
+view.savedRules = utils:deepCopy(view.sortingRules)
+view.dirtyRules = {}
+view:updateDirty('mod1')
+assert(not view.hasUnsavedChanges and not view.applyBtn.enable)
+view.sortingRules.mod1.loadFirst = 'category'
+view:updateDirty('mod1')
+assert(view.hasUnsavedChanges and view.applyBtn.enable)
+view.sortingRules.mod1 = utils:deepCopy(view.savedRules.mod1)
+view:updateDirty('mod1')
+assert(not view.hasUnsavedChanges)
+view:onEditModeClick(view.loadAfter)
+view:onModsOrderMouseDown(view.modsOrderList, 1, 0) -- mod2 after simulation
+assert(view.hasUnsavedChanges)
+view:cancelMode()
+assert(not view.hasUnsavedChanges)
+view.sortingRules.new = {loadFirst = 'off', loadAfter = {}}
+view:updateDirty('new')
+assert(not view.hasUnsavedChanges) -- implicit defaults are not real changes
+-- Hover hit tests for every badge; bodies/gaps do not produce tooltips.
+core.layers.ModsInfo = {data = {mod1 = {requirements = {'mod2'}, requiredBy = {'unknown'}},
+    mod2 = {name = 'Second mod'}}}
+view.sortingRules.mod1 = {loadAfter = {'mod2'}, loadBefore = {'mod2'}, incompatibleMods = {'unknown'}}
+local hoverList = {width = 300, itemheight = 20, items = {{height = 20, item = {modId = 'mod1'}}},
+    rowAt = function() return 1 end, getYScroll = function() return 0 end}
+-- size=16, right=280, separator=220; R=179, D=198, A=226, B=245, I=264.
+for _, test in ipairs({{180, 'Badge_R'}, {199, 'Badge_D'}, {227, 'Badge_A'}, {246, 'Badge_B'}, {265, 'Badge_I'}}) do
+    local text = assert(view:getBadgeTooltip(hoverList, test[1], 5))
+    assert(text:find(test[2], 1, true))
+end
+assert(view:getBadgeTooltip(hoverList, 180, 5):find('Second mod', 1, true))
+assert(view:getBadgeTooltip(hoverList, 10, 5) == nil)
+assert(view:getBadgeTooltip(hoverList, 180, 0) == nil)
+-- Navigation keeps missing targets and file rows inert; blocked in edit mode.
+local originalOnModClick = view.onModClick
+local navigations = 0
+view.onModClick = function() navigations = navigations + 1 end
+local navList = {selectedTab = 'REQUIRED_TAB', items = {{item = {modId = 'mod2'}}},
+    rowAt = function() return 1 end}
+view:onInfoListMouseDown(navList, 1, 1)
+assert(navigations == 1 and view.modsOrderList.items[view.modsOrderList.selected].item.modId == 'mod2')
+navList.selectedTab = 'FILES_TAB'
+view:onInfoListMouseDown(navList, 1, 1)
+navList.selectedTab = 'REQUIRED_BY_TAB'
+view.editMode = true
+view:onInfoListMouseDown(navList, 1, 1)
+view.editMode = nil
+navList.items[1].item.modId = 'not-enabled'
+view:onInfoListMouseDown(navList, 1, 1)
+assert(navigations == 1)
+view.onModClick = originalOnModClick
+-- Failed saves keep the dirty marker; successful saves establish a new baseline.
+view:updateDirty('mod1')
+assert(view.hasUnsavedChanges)
+local oldCommit = core.layers.SortingRules.commitEdit
+core.layers.SortingRules.commitEdit = function() return false end
+view:applyChanges()
+assert(view.hasUnsavedChanges and view.applyBtn.enable)
+core.layers.SortingRules.commitEdit = oldCommit
+view:applyChanges()
+assert(not view.hasUnsavedChanges and not view.applyBtn.enable)
+-- Confirmation: NO leaves the editor open, YES explicitly discards and closes.
+local closed = 0
+view.discardAndClose = function() closed = closed + 1 end
+ISModalDialog = {new = function(_, x, y, w, h, text, yesNo, target, callback)
+    return {initialise = function() end, addToUIManager = function() end,
+        target = target, callback = callback}
+end}
+view.hasUnsavedChanges = true
+view:close()
+local dialog = view.closeDialog
+assert(dialog and closed == 0)
+view:close()
+assert(view.closeDialog == dialog)
+dialog.callback(dialog.target, {internal = 'NO'})
+assert(not view.closeDialog and closed == 0)
+view:close()
+dialog = view.closeDialog
+dialog.callback(dialog.target, {internal = 'YES'})
+assert(closed == 1)
+view.hasUnsavedChanges = false
+view:close()
+assert(closed == 2)
 print('editor_rule_highlights: OK')
