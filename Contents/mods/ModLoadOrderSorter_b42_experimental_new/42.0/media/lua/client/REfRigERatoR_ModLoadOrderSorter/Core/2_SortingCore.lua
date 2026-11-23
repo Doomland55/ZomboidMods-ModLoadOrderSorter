@@ -475,19 +475,19 @@ function MLOS_SortingCore:validate(modsList, activeRules)
 	return status
 end
 
---- Applies the sorted order to the load order panel.
+--- Applies the sorted order to the load order panel (scrollObject).
 --- The current order is backed up to loadOrderBackup.txt first.
----@param panel table ModLoadOrderPanel
+---@param scrollObject table ModLoadOrderPanel
 ---@param sortedIds table array of modIds
-function MLOS_SortingCore:applyOrder(panel, sortedIds)
-	if not panel or not panel.modList then return end
+function MLOS_SortingCore:applyOrder(scrollObject, sortedIds)
+	if not scrollObject or not scrollObject.items then return end
 
 	-- backup current order
 	local current = {}
-	for _, val in ipairs(panel.modList.items) do
+	for _, val in ipairs(scrollObject.items) do
 		table.insert(current, val.item.modId)
 	end
-	local file = getFileWriter(core.MLOS_ROOT .. "/" .. BACKUP_FILE, true, false)
+	local file = getFileWriter(utils:joinpath(core.MLOS_ROOT, BACKUP_FILE), true, false)
 	if file then
 		file:write(table.concat(current, ";"))
 		file:close()
@@ -495,7 +495,7 @@ function MLOS_SortingCore:applyOrder(panel, sortedIds)
 
 	-- rebuild items in the new order
 	local byId = {}
-	for _, val in ipairs(panel.modList.items) do
+	for _, val in ipairs(scrollObject.items) do
 		byId[val.item.modId] = val
 	end
 	local newItems = {}
@@ -506,15 +506,15 @@ function MLOS_SortingCore:applyOrder(panel, sortedIds)
 		end
 	end
 	-- safety net: append anything that was not in sortedIds
-	for _, val in ipairs(panel.modList.items) do
+	for _, val in ipairs(scrollObject.items) do
 		if byId[val.item.modId] then table.insert(newItems, val) end
 	end
 
-	panel.modList.items = newItems
+	scrollObject.items = newItems
 	for i, val in ipairs(newItems) do
 		val.itemindex = i
 	end
-	panel.modList.selected = 1
+	scrollObject.selected = 1
 	print("[MLOS] New load order applied (" .. #newItems .. " mods). Backup saved to " .. BACKUP_FILE)
 end
 

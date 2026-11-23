@@ -8,11 +8,22 @@
 require('luautils')
 
 local table = table; local pairs = pairs; local ipairs = ipairs; local type = type; local string = string
-local tostring = tostring; local fileExists = fileExists; local getFileSeparator = getFileSeparator; local listFilesInModDirectory = listFilesInModDirectory
+local tostring = tostring; local select = select; local fileExists = fileExists; local listFilesInModDirectory = listFilesInModDirectory
 
 local ZomboidVersionStr = getGameVersion()
 local ZomboidVersionNum = tonumber(string.match(ZomboidVersionStr, "(%d+%.%d+).*"))
+local ZomboidSeparator = getFileSeparator()
 local Refr_Utils = {}
+
+function Refr_Utils:joinpath(root, ...)
+    local res = root
+    local count = select("#", ...)
+    for i = 1, count do
+        local v = select(i, ...)
+        res = res .. ZomboidSeparator .. tostring(v)
+      end
+    return res
+end
 
 
 function Refr_Utils:clamp(value, min, max)

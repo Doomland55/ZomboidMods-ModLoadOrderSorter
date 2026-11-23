@@ -21,7 +21,7 @@ local BUTTON_HGT = FONT_HGT_SMALL + 6
 -- ScrollObject.parent: -
 --=============================================================
 
-local function updateRectValues(slf, x, y, width, height, isOffset)
+function MLOS_ScrollExtensions.updateRectValues(slf, x, y, width, height, isOffset)
     if isOffset then
         height = slf.height + (height or -(y or 0))
         width = slf.width + (width or -(x or 0))
@@ -57,10 +57,6 @@ end
 -- #endregion
 
 
-function MLOS_ScrollExtensions:initialResacale(scrollObject, x, y, width, height)
-    updateRectValues(scrollObject, x, y, width, height)
-end
-
 -- #region Title
 -- ============================================================
 --                         Title
@@ -69,7 +65,7 @@ end
 -- ScrollObject.parent: -
 -- ============================================================
 
-function MLOS_ScrollExtensions:addTitle(scrollObject, titleText, inCenter, backgroundColor, fontSize)
+function MLOS_ScrollExtensions:addTitle(scrollObject, titleText, inCenter, backgroundColor, fontSize, offset)
     if not scrollObject or not titleText then return end
 
     fontSize = fontSize or UIFont.Medium
@@ -79,7 +75,8 @@ function MLOS_ScrollExtensions:addTitle(scrollObject, titleText, inCenter, backg
     local absoluteBounds = scrollObject:getAbsoluteBounds()
     absoluteBounds.height = sizeInPixels + PADDING
 
-    updateRectValues(scrollObject, nil, sizeInPixels + PADDING, nil, nil, true)
+    if offset ~= nil then absoluteBounds.y = absoluteBounds.y + offset
+    else self.updateRectValues(scrollObject, nil, absoluteBounds.height, nil, nil, true) end
 
     local localBounds = scrollObject:toLocalBounds(absoluteBounds)
     local origPrerender = scrollObject.prerender
@@ -250,7 +247,7 @@ end
 
 --- @param scrollObject any
 --- @param offset any - nil - добавляем поиск inPlace , то есть добавляем поиск и сдвигаем скрол лист под поиск. Число - значит не двигаем скролл лист, но двигаем поиск по вертикали
-function MLOS_ScrollExtensions:addSearchEntry(scrollObject, offset)
+function MLOS_ScrollExtensions:addSearchEntry(scrollObject, offset, alignRight)
     if scrollObject == nil or scrollObject.parent == nil then return end
 
     local scrollParent = scrollObject.parent
@@ -261,9 +258,12 @@ function MLOS_ScrollExtensions:addSearchEntry(scrollObject, offset)
     local search_y = scrollObject.y
     if offset ~= nil then search_y = search_y + offset end
 
-    local searchEntry = ISTextEntryBox:new("", scrollObject.x, search_y, scrollObject.width / 2 - 2 * (BUTTON_HGT + PADDING), BUTTON_HGT)
+    local search_x = scrollObject.x
+    if alignRight == true then search_x = search_x + scrollObject.width / 2 end
+
+    local searchEntry = ISTextEntryBox:new("", search_x, search_y, scrollObject.width / 2 - 2 * (BUTTON_HGT + PADDING), BUTTON_HGT)
     if offset == nil then
-        updateRectValues(scrollObject, nil, BUTTON_HGT + PADDING, nil, nil, true)
+        self.updateRectValues(scrollObject, nil, BUTTON_HGT + PADDING, nil, nil, true)
     end
 
     searchEntry.font = UIFont.Small
@@ -423,6 +423,12 @@ local function applySelection(scrollObject, newSelectedMap)
     end
 end
 
+function MLOS_ScrollExtensions:clearMultiselection(scrollObject)
+    if not scrollObject or not scrollObject.items then return end
+
+    scrollObject.selected_map = scrollObject.selected_map and {} or nil
+    scrollObject.selected_flat = scrollObject.selected_flat and {} or nil
+end
 
 function MLOS_ScrollExtensions:addMultiselectionSupport(scrollObject)
     if not scrollObject or not scrollObject.items then return end
@@ -770,14 +776,19 @@ local function initialiseItemContextMenu(scrollObject)
             end
 
             local title = entry.name
-            if type(title) == "function" then
+            if title and type(title) == "function" then
                 title = title(selectedRawItems, clickedRawItem)
+            end
+
+            local tooltip = entry.tooltip
+            if tooltip and type(tooltip) == "function" then
+                tooltip = tooltip(selectedRawItems, clickedRawItem)
             end
 
             if isEnabled then
                 context:addOption(
                     title,
-                    entry.tooltip,
+                    tooltip,
                     slf,
                     entry.menuFunction,
                     selectedRawItems,
@@ -791,6 +802,10 @@ local function initialiseItemContextMenu(scrollObject)
     end
 end
 
+--- menuFunc(target, selectedRawItems, row, clickedRawItem)
+--- selectedRawItems - list of mod.item (it means it has fields: .modId, .modInfo, .name, .icon )
+--- row - index of clicked item (int)
+--- clickedRawItem - same as modList[row]
 function MLOS_ScrollExtensions:addItemContextMenu(scrollObject, menuName, tooltip, menuFunc, enabledFunc)
     if not scrollObject or not scrollObject.items then return end
 

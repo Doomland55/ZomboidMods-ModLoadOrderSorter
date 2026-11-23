@@ -1,19 +1,21 @@
 local utils = require('REfRigERatoR_ModLoadOrderSorter/Core/1_Utils')
 local core = require('REfRigERatoR_ModLoadOrderSorter/Core/Core')
+local CM = require("REfRigERatoR_ModLoadOrderSorter/Core/CorutineManager.lua")
 local listFilesInModDirectory = listFilesInModDirectory
 
 local MLOS_ModsInfo = {}
 MLOS_ModsInfo.data = {} -- data[modId] = { id, name, category, requirements, loadAfter, loadBefore, incompatibleMods, requiredBy, warnings.missing, ... }
 
 
---- Layer entry point, see LayerManager. Collects facts from mod.info for the
---- enabled mods only; everything that depends on sorting rules or on the
---- current order (graph, incompatibilities, validation) lives in SortingCore.
-function MLOS_ModsInfo:load(ctx)
-    local data = {}
-    for i, row in ipairs(ctx.mods) do
-        local modId = row.item.modId
-        local info = (ctx.reread ~= true and self.data[modId]) or self:getExtraModInfo(row)
+
+function MLOS_ModsInfo:load(modList, reread)
+	if utils:tableIsEmpty(modList) then return end
+
+	local modsCount = #modList
+    for i=1, modsCount do
+		local modObject = modList[i]
+        local modId = modObject.item.modId
+        local info = (reread ~= true and self.data[modId]) or self:getExtraModInfo(modObject)
         info.requiredBy = {}
         info.warnings = { missing = {} }
 
@@ -21,23 +23,38 @@ function MLOS_ModsInfo:load(ctx)
             pcall(function() error("\n[ERROR] --> [MLOS] Mod: [" .. tostring(info.name) .. "] have unknown category: " .. tostring(info.category) .. "\n") end )
         end
 
-        data[modId] = info
-        ctx:step(i, #ctx.mods)
+        self.data[modId] = info
+        CM.checkpoint(i/modsCount, "[ModsInfo] progress " .. tostring(i) .. "/" .. tostring(modsCount))
     end
 
     -- Reverse requirements and requirements that are not enabled.
-    for modId, info in pairs(data) do
+    for modId, info in pairs(self.data) do
         for _, dep in ipairs(info.requirements or {}) do
-            if data[dep] then
-                table.insert(data[dep].requiredBy, modId)
+            if self.data[dep] then
+                table.insert(self.data[dep].requiredBy, modId)
             else
                 table.insert(info.warnings.missing, dep)
             end
         end
     end
-
-    self.data = data
 end
+
+
+
+--- Layer entry point, see LayerManager. Collects facts from mod.info for the
+--- enabled mods only; everything that depends on sorting rules or on the
+--- current order (graph, incompatibilities, validation) lives in SortingCore.
+function MLOS_ModsInfo:getData(modList, reread)
+	CM.run(self.load, {
+		args = {self, modList, reread},
+		onStart = self.onStart,
+		onFinish = self.onFinish
+	})
+end
+
+function MLOS_ModsInfo.onStart() CM:setProgress(0, "[ModsInfo] processing ...") end
+function MLOS_ModsInfo.onFinish() CM:setProgress(1, "[ModsInfo] finished ...") end
+
 
 function MLOS_ModsInfo:getWarnings()
     local warnings = {}

@@ -20,6 +20,7 @@ require("OptionScreens/ModSelector/ModSelector")
 
 local utils = require('REfRigERatoR_ModLoadOrderSorter/Core/1_Utils')
 local core = require('REfRigERatoR_ModLoadOrderSorter/Core/Core')
+local CM = require("REfRigERatoR_ModLoadOrderSorter/Core/CorutineManager.lua")
 require('REfRigERatoR_ModLoadOrderSorter/Layers/LayerManager')
 local sortingCore = require('REfRigERatoR_ModLoadOrderSorter/Core/2_SortingCore')
 local scrollExt = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/ScrollExtensions')
@@ -35,27 +36,27 @@ local ModLoadOrderPanelOverride = ModSelector.ModLoadOrderPanel
 
 
 local origCreateChildren = ModLoadOrderPanelOverride.createChildren
-local origInstantiate = ModLoadOrderPanelOverride.instantiate
+-- local origInstantiate = ModLoadOrderPanelOverride.instantiate
 
 
 -- #region ================ FIXES =================
-function ModLoadOrderPanelOverride:fixMissingModsCrash()
-    local modArray = self.model:getActiveMods():getMods():clone()
-    local missedMods = {}
+-- function ModLoadOrderPanelOverride:fixMissingModsCrash()
+--     local modArray = self.model:getActiveMods():getMods():clone()
+--     local missedMods = {}
 
-    for i = 0, modArray:size()-1 do
-        local modId = modArray:get(i)
-        if modId ~= nil and not self.model.mods[modId] then
-            self.model:setModActive(modId, false)
-            table.insert(missedMods, modId)
-        end
-    end
+--     for i = 0, modArray:size()-1 do
+--         local modId = modArray:get(i)
+--         if modId ~= nil and not self.model.mods[modId] then
+--             self.model:setModActive(modId, false)
+--             table.insert(missedMods, modId)
+--         end
+--     end
 
-    if not utils:tableIsEmpty(missedMods) and self.warningPopup then
-        self.warningPopup:addWarning("Mods not found",  "Mods: [" .. table.concat(missedMods, ', ') .. "] were not found. They will be disabled to prevent the game from crashing.")
-        -- pcall(function(missedMods) error("\n[WARNING] --> [MLOS] Mods: [" .. table.concat(missedMods, ', ') .. "] were not found. They will be disabled to prevent the game from crashing.\n") end, missedMods)
-    end
-end
+--     if not utils:tableIsEmpty(missedMods) and self.warningPopup then
+--         self.warningPopup:addWarning("Mods not found",  "Mods: [" .. table.concat(missedMods, ', ') .. "] were not found. They will be disabled to prevent the game from crashing.")
+--         -- pcall(function(missedMods) error("\n[WARNING] --> [MLOS] Mods: [" .. table.concat(missedMods, ', ') .. "] were not found. They will be disabled to prevent the game from crashing.\n") end, missedMods)
+--     end
+-- end
 
 
 function ModLoadOrderPanelOverride:fixBackButtonJoypadFocus()
@@ -96,24 +97,6 @@ end
 -- #endregion
 
 
--- #region ============== Autoscroll ==============
--- Scroll list box up or down if mouse is outside 
--- ================================================
--- function ModLoadOrderPanelOverride:render()
---     ISPanelJoypad.render(self)
---     -- self:MLOS_updateView()
---     if self.modList.dragItem == nil then return end
-
---     local mY = self:getMouseY()
---     local diff = 0
---     if mY < self.modList:getY() then diff = mY - self.modList:getY() end
---     if mY > self.modList:getBottom() then diff = mY - self.modList:getBottom() end
---     if diff == 0 then return end
-
---     self.modList:setYScroll(self.modList:getYScroll() - (diff * 0.02 * UIManager.getMillisSinceLastRender()))
--- end
---#endregion
-
 
 -- Layer progress is aggregated by the manager; no UI knowledge of individual
 -- layer APIs is required when another layer is registered.
@@ -136,23 +119,64 @@ local function showLayerProgress(panel, status)
     panel.MLOS_ProgressBar:setText(title)
 end
 
-function ModLoadOrderPanelOverride:instantiate()
-    origInstantiate(self)
-    print("[MLOS] Layers initialisation STARTED")
-    -- if self.MLOS_ProgressBar then
-    --     self.MLOS_ProgressBar:setVisible(true)
-    --     self.MLOS_ProgressBar:setText("Checking workshop updates...")
-    --     self.MLOS_ProgressBar:setProgress(0)
-    -- end
+local function UpdateLayers(self)
     core.layersManager:initialise(self.modList.items, {
-        onProgress = function(status) showLayerProgress(self, status) end,
         onComplete = function()
-            print("[MLOS] Layers initialisation FINISHED")
-            if self.MLOS_ProgressBar then self.MLOS_ProgressBar:setVisible(false) end
-            self:showLayerWarnings()
+            self.MLOS_ProgressBar:setVisible(false)
+            self.autoButton.enable = true
+            -- self:showLayerWarnings()
             -- self:MLOS_refresh()
         end,
     })
+end
+
+
+function ModLoadOrderPanelOverride:fillModListWithActiveMods(modArray)
+    modArray = modArray or self.model:getActiveMods():getMods()
+    local missedMods = {}
+
+    self.modList:clear()
+    self.defaultOrder = {}
+    for i = 0, modArray:size()-1 do
+        local modId = modArray:get(i)
+        local mod = self.model.mods[modId]
+        
+        if not mod then
+            self.model:setModActive(modId, false)
+            table.insert(missedMods, modId)
+        else
+            local modData = {
+                name = mod.name,
+                icon = mod.icon,
+                modId = mod.modId,
+                modInfo = mod.modInfo
+            }
+
+            local item = self.modList:addItem("", modData)
+            item.color = {r = 0.9, g = 0.9, b = 0.9}
+            item.tooltip = self:getTooltip(mod.modInfo)
+            table.insert(self.defaultOrder, mod.modId)
+        end
+    end
+
+    if not utils:tableIsEmpty(missedMods) and self.warningPopup then
+        self.warningPopup:addWarning("Mods not found",  "Mods: [" .. table.concat(missedMods, ', ') .. "] were not found. They will be disabled to prevent the game from crashing.")
+    end
+
+    self.modList:updateModsColor()
+end
+
+
+function ModLoadOrderPanelOverride:instantiate()
+    ISPanelJoypad.instantiate(self)
+    self:fillModListWithActiveMods()
+
+    print("[MLOS] Layers initialisation STARTED")
+
+    CM:setProgressBar(self.MLOS_ProgressBar)
+    self.MLOS_ProgressBar:setVisible(true)
+    self.autoButton.enable = false
+    UpdateLayers(self)
 end
 
 
@@ -174,12 +198,13 @@ end
 -- Topological auto sort: builds the dependency graph from all layers,
 -- sorts the mods and applies the new order (with a backup file)
 function ModLoadOrderPanelOverride:autoSort()
-    if not core.layersManager:isSuccessful() then
-        if self.warningPopup then self.warningPopup:addWarning(getText("UI_MLOS_Layers_NotReady"), getText("UI_MLOS_Layers_NotReady_Msg"), "Layers") end
-        return
-    end
+    local mlos_core = core
+    -- if not core.layersManager:isSuccessful() then
+    --     if self.warningPopup then self.warningPopup:addWarning(getText("UI_MLOS_Layers_NotReady"), getText("UI_MLOS_Layers_NotReady_Msg"), "Layers") end
+    --     return
+    -- end
     local sortedIds = sortingCore:sort(self.modList.items)
-    sortingCore:applyOrder(self, sortedIds)
+    sortingCore:applyOrder(self.modList, sortedIds)
 
     if self.warningPopup then
         for _, w in ipairs(sortingCore.warnings) do
@@ -193,16 +218,16 @@ end
 
 
 local function onRulesEditorButton(self, button)
-    if not core.layersManager:isSuccessful() then
-        if self.warningPopup then self.warningPopup:addWarning(getText("UI_MLOS_Layers_NotReady"), getText("UI_MLOS_Layers_NotReady_Msg"), "Layers") end
-        return
-    end
+    -- if not core.layersManager:isSuccessful() then
+    --     if self.warningPopup then self.warningPopup:addWarning(getText("UI_MLOS_Layers_NotReady"), getText("UI_MLOS_Layers_NotReady_Msg"), "Layers") end
+    --     return
+    -- end
 
     local editor = srEditor:new(self.x, self.y, self.width, self.height, self)
     editor:initialise()
     editor:instantiate()
     editor:addToUIManager()
-    editor:bringToTop()
+    editor:setAlwaysOnTop(true)
     self:setVisible(false)
 end
 
@@ -225,7 +250,7 @@ function ModLoadOrderPanelOverride:createChildren()
     local modList_height =  height - (y_offset + PADDING + BUTTON_HGT + PADDING)
 
     -- ADD NEW FUNCTIONS TO THE MODLIST --
-    scrollExt:initialResacale(self.modList, nil, y_offset, modList_width, modList_height)
+    scrollExt.updateRectValues(self.modList, nil, y_offset, modList_width, modList_height)
     scrollExt:modListBoxOverrides(self.modList)
     scrollExt:addTitle(self.modList, "", true, nil) --{r=0.28, g=0.35, b=0.8, a=0.8}
     scrollExt:addBackground(self.modList, nil, {})
@@ -311,7 +336,6 @@ function ModLoadOrderPanelOverride:createChildren()
     self:addChild(self.conflictFilter)
 
     -- FIXES --
-    self:fixMissingModsCrash()
     self:fixBackButtonJoypadFocus()
 
     -- CONTEXT MENU ITEMS --
@@ -324,6 +348,21 @@ function ModLoadOrderPanelOverride:createChildren()
             end
         })
     end)
+
+    scrollExt:addItemContextMenu(self.modList,     
+        function(sri, _) return "Disable (" .. tostring(#sri) .. ")" end,
+        function(sri, _)
+            return "Disable mod(s) (" .. tostring(#sri) .. ")" -- TODO + requiredBy for each. change tooltip to warning about required by mods will be disabled too
+        end,
+        function(slf, sri, _, _)
+            for i=1, #sri do
+                self.model:forceActivateMods(sri[i].modInfo, false)
+            end
+            self.model:refreshMods()
+            self:fillModListWithActiveMods()
+            scrollExt:clearMultiselection(slf)
+        end
+    )
 
     -- self.fileTooltip = ISToolTip:new(); self.fileTooltip:setOwner(self)
     -- self.fileTooltip:setVisible(false); self.fileTooltip:setAlwaysOnTop(true); self.fileTooltip.followMouse = true

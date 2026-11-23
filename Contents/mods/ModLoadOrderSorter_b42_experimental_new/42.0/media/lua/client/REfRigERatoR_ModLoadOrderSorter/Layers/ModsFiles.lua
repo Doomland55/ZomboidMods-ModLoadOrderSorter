@@ -13,6 +13,7 @@
 ---
 local utils = require('REfRigERatoR_ModLoadOrderSorter/Core/1_Utils')
 local core = require('REfRigERatoR_ModLoadOrderSorter/Core/Core')
+local CM = require("REfRigERatoR_ModLoadOrderSorter/Core/CorutineManager.lua")
 local Parser = require('REfRigERatoR_ModLoadOrderSorter/Layers/ModsFilesParser')
 
 local cacheFileExists = cacheFileExists
@@ -20,11 +21,13 @@ local listFilesInModDirectory = listFilesInModDirectory
 
 local CACHE_FILE = "modsFilesCache.txt"
 local LUA_DIR = "media/lua"
-local STEAM_TIMEOUT_MS = 30000 -- how long to wait for the workshop details before using cached timestamps
+local STEAM_TIMEOUT_MS = 10000 -- how long to wait for the workshop details before using cached timestamps
+
 
 local MLOS_ModsFiles = {}
-MLOS_ModsFiles.data = {}          -- data[modId] = { rootDir, files={...}, modifications={...}, signature, fsSignature, complete }
-MLOS_ModsFiles.cache = nil        -- raw cache read from file
+MLOS_ModsFiles.data = {}          -- data[modId] = { rootDir, files={...}, modifications={...}, version, updatedTime, lastCheckedTime, fsSignature, complete }
+MLOS_ModsFiles.cache = {}
+-- MLOS_ModsFiles.cache = nil        -- raw cache read from file
 MLOS_ModsFiles.notLoaded = {}     -- modIds whose analysis is incomplete (not loaded in this session / unreadable)
 MLOS_ModsFiles.staleMods = {}     -- modIds that were (re)scanned in the last run
 MLOS_ModsFiles.workshopTimes = {} -- workshop id -> update timestamp from the last Steam answer
@@ -51,39 +54,25 @@ end
 ---@param modInfo table|nil ModInfo object of the mod
 ---@return string
 local function getModSignature(modId, modInfo)
-	local version = ""
-	local ok, reader = pcall(getModFileReader, modId, "mod.info", false)
-	if ok and reader then
-		local line = reader:readLine()
-		while line ~= nil do
-			local v = line:match("^%s*version%s*=%s*(.-)%s*$")
-			if v ~= nil and v ~= "" then version = v break end
-			line = reader:readLine()
-		end
-		reader:close()
-	end
+    local layer = core.layers['ModsFiles']
+    local version = layer and layer[modId] and layer[modId].version or "0"
 
-	local count = 0
-	local okFiles, files = pcall(listFilesInModDirectory, modId, LUA_DIR)
-	if okFiles and files then count = files:size() end
+    local updateTime = modInfo and getWorkshopUpdateTimestamp(modInfo) or ""
 
-	local updateTime = modInfo and getWorkshopUpdateTimestamp(modInfo) or ""
-
-	return tostring(version) .. "|" .. tostring(count) .. "|" .. tostring(updateTime or "")
+    return tostring(version) .. "|" .. tostring(updateTime or "")
 end
 
 
 ---@param modId string
 ---@return table list of relative lua file paths of the mod (from disk)
 function MLOS_ModsFiles:listModLuaFiles(modId)
-	local result = {}
-	local ok, files = pcall(listFilesInModDirectory, modId, LUA_DIR)
-	if ok and files then
-		result = utils:toKahluaTable(files)
-	end
-	return result
+    local result = {}
+    local ok, files = pcall(listFilesInModDirectory, modId, LUA_DIR)
+    if ok and files then
+        result = utils:toKahluaTable(files)
+    end
+    return result
 end
-
 
 --- Paths of all lua files loaded in this Lua session, with forward slashes.
 ---@return table
@@ -99,7 +88,7 @@ end
 --- Lua files of one mod among the loaded ones, relative to its version/common root.
 local function listLoadedModFiles(modId, dir, modInfo, paths)
     local result, seen = {}, {}
-    local roots = {dir}
+    local roots = { dir }
     local ok, version = pcall(function() return modInfo:getVersionDir() end)
     if ok and version then roots[#roots + 1] = version end
     local commonOK, common = pcall(function() return modInfo:getCommonDir() end)
@@ -110,7 +99,9 @@ local function listLoadedModFiles(modId, dir, modInfo, paths)
             if path:sub(1, #root + 1) == root .. "/" then
                 -- getModFileReader expects paths relative to a mod version or common root.
                 local rel = path:match("(media/lua/.*)$")
-                if rel and not seen[rel] then seen[rel] = true; result[#result+1] = rel end
+                if rel and not seen[rel] then
+                    seen[rel] = true; result[#result + 1] = rel
+                end
                 break
             end
         end
@@ -119,85 +110,81 @@ local function listLoadedModFiles(modId, dir, modInfo, paths)
 end
 
 
---================================================
---      Cache file IO
---================================================
+-- #region ========= Cache file IO ================
 
 ---@param modId string
 ---@param data table
 ---@return string
 local function cacheDataToText(modId, data)
-	local lines = {}
-	table.insert(lines, "signature=" .. tostring(data.signature or ""))
-	table.insert(lines, "complete=" .. tostring(data.complete == true))
-	if data.fsSignature then table.insert(lines, "fssignature=" .. data.fsSignature) end
-	if not utils:tableIsEmpty(data.files) then
-		table.insert(lines, "files=" .. table.concat(data.files, ","))
-	end
-	for _, m in ipairs(data.modifications or {}) do
-		table.insert(lines, "mod=" .. table.concat({
-			m.file or "",
-			m.fullTarget or ((m.className or "") .. ":" .. (m.methodName or "")),
-			tostring(m.line or 0),
-			tostring(m.isHook == true),
-			m.alias or ""
-		}, "|"))
-	end
-	return "[" .. modId .. "]\r\n" .. table.concat(lines, "\r\n")
+    local lines = {}
+    table.insert(lines, "signature=" .. tostring(data.signature or ""))
+    table.insert(lines, "complete=" .. tostring(data.complete == true))
+    if data.fsSignature then table.insert(lines, "fssignature=" .. data.fsSignature) end
+    if not utils:tableIsEmpty(data.files) then
+        table.insert(lines, "files=" .. table.concat(data.files, ","))
+    end
+    for _, m in ipairs(data.modifications or {}) do
+        table.insert(lines, "mod=" .. table.concat({
+            m.file or "",
+            m.fullTarget or ((m.className or "") .. ":" .. (m.methodName or "")),
+            tostring(m.line or 0),
+            tostring(m.isHook == true),
+            m.alias or ""
+        }, "|"))
+    end
+    return "[" .. modId .. "]\r\n" .. table.concat(lines, "\r\n")
 end
 
 
 local function cacheLineToData(addTo, line)
-	local key, value = line:match('^%s*(.-)%s*=%s*(.-)%s*$')
-	if key == nil then return end
-	key = key:lower()
-	if key == "signature" then
-		addTo.signature = value
-	elseif key == "fssignature" then
-		addTo.fsSignature = value
-	elseif key == "complete" then
-		addTo.complete = (value == "true")
-	elseif key == "files" then
-		addTo.files = utils:splitStringBySeparator(value)
-	elseif key == "mod" then
-		-- file|fullTarget|line|isHook[|alias] - alias field is optional (old caches)
-		local file, target, lineNum, isHook, alias = value:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|?(.*)$")
-		if file then
-			local className, methodName = target:match("^(.-):([^:]+)$")
-			addTo.modifications = addTo.modifications or {}
-			table.insert(addTo.modifications, {
-				file = file,
-				fullTarget = target,
-				className = className,
-				methodName = methodName,
-				alias = (alias ~= nil and alias ~= "") and alias or nil,
-				line = tonumber(lineNum),
-				isHook = (isHook == "true")
-			})
-		end
-	end
+    local key, value = line:match('^%s*(.-)%s*=%s*(.-)%s*$')
+    if key == nil then return end
+    key = key:lower()
+    if key == "signature" then
+        addTo.signature = value
+    elseif key == "fssignature" then
+        addTo.fsSignature = value
+    elseif key == "complete" then
+        addTo.complete = (value == "true")
+    elseif key == "files" then
+        addTo.files = utils:splitStringBySeparator(value)
+    elseif key == "mod" then
+        -- file|fullTarget|line|isHook[|alias] - alias field is optional (old caches)
+        local file, target, lineNum, isHook, alias = value:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|?(.*)$")
+        if file then
+            local className, methodName = target:match("^(.-):([^:]+)$")
+            addTo.modifications = addTo.modifications or {}
+            table.insert(addTo.modifications, {
+                file = file,
+                fullTarget = target,
+                className = className,
+                methodName = methodName,
+                alias = (alias ~= nil and alias ~= "") and alias or nil,
+                line = tonumber(lineNum),
+                isHook = (isHook == "true")
+            })
+        end
+    end
 end
 
 
 --- Saves current layer data to the cache file
 function MLOS_ModsFiles:saveCache()
-	if utils:tableIsEmpty(self.data) then return end
-	local path = core.MLOS_ROOT .. "/" .. CACHE_FILE
-	print("[MLOS] Saving mods files cache: " .. path)
-	core:saveTxtFile(path, self.data, cacheDataToText)
-	self.cache = self.data
+    if utils:tableIsEmpty(self.data) then return end
+    local path = utils:joinpath(core.MLOS_LAYERS_ROOT, CACHE_FILE)
+    print("[MLOS] Saving mods files cache: " .. path)
+    return core:saveTxtFile(path, self.data, cacheDataToText)
 end
-
 
 --- Reads the cache file
 ---@return table
 function MLOS_ModsFiles:readCache()
-	local path = core.MLOS_ROOT .. "/" .. CACHE_FILE
-	if cacheFileExists(path) ~= true then return {} end
-	print("[MLOS] Reading mods files cache: " .. path)
-	local result = core:readTxtFile(path, cacheLineToData)
-	return result or {}
+    local path = utils:joinpath(core.MLOS_LAYERS_ROOT, CACHE_FILE)
+    if cacheFileExists(path) ~= true then return {} end
+    print("[MLOS] Reading mods files cache: " .. path)
+    return core:readTxtFile(path, cacheLineToData) or {}
 end
+-- #endregion
 
 
 --================================================
@@ -207,26 +194,28 @@ end
 --- Workshop update timestamps by workshop id. Yields until Steam answers or the
 --- timeout passes; returns nil when there is no usable answer.
 ---@return table|nil
-local function fetchWorkshopTimes(ctx)
+local function fetchWorkshopTimes()
     if type(querySteamWorkshopItemDetails) ~= "function" or type(getSteamWorkshopItemIDs) ~= "function" then return nil end
-    local ok, ids = pcall(getSteamWorkshopItemIDs)
-    if not ok or not ids then return nil end
-    local sized, count = pcall(function() return ids:size() end)
-    if sized and count == 0 then return nil end
+
+    local ids = getSteamWorkshopItemIDs()
+    if not ids then return nil end
 
     -- The game calls back with (arg, "Completed", details) or (arg, "NotCompleted").
     local status, details
-    local function onDetails(_, queryStatus, info)
+    local function onDetails(queryStatus, info)
         if status == nil and (queryStatus == "Completed" or queryStatus == "NotCompleted") then
             status, details = queryStatus, info
         end
     end
-    if not pcall(querySteamWorkshopItemDetails, ids, onDetails, MLOS_ModsFiles) then return nil end
+    querySteamWorkshopItemDetails(ids, onDetails)
 
-    local deadline = getTimestampMs() + STEAM_TIMEOUT_MS
-    while status == nil and getTimestampMs() < deadline do ctx:wait() end
-    if status ~= "Completed" or not details then return nil end
+    CM.setProgress(0.1, "[ModsFiles] fetching workshop times ...")
+    local ok, _ = CM.waitUntil(function() return status == "Completed" end,
+        { timeoutMs = STEAM_TIMEOUT_MS, intervalMs = 20})
 
+    if not ok or status ~= "Completed" or not details then return nil end
+    CM.setProgress(0.2, "[ModsFiles] fetching success!")
+    
     local times = {}
     for i = 0, details:size() - 1 do
         local detail = details:get(i)
@@ -236,9 +225,7 @@ local function fetchWorkshopTimes(ctx)
 end
 
 
---================================================
---      ZombieBuddy bridge
---================================================
+-- #region ========== ZombieBuddy bridge =========
 
 local function buddyAvailable()
     return type(MLOS_BuddyBegin) == "function" and type(MLOS_BuddyState) == "function"
@@ -288,8 +275,10 @@ function MLOS_ModsFiles:openBuddySnapshot(ctx, modId)
         local read, source = pcall(MLOS_BuddySource, job, index - 1)
         return read and source or nil
     end
+
     return snapshot
 end
+--  #endregion
 
 
 --================================================
@@ -380,8 +369,12 @@ end
 local function scanSnapshot(ctx, item, cached, signature, snapshot)
     local files = snapshot.files
     local result = {
-        rootDir = item.modInfo:getDir(), files = files, modifications = {},
-        signature = signature, fsSignature = snapshot.fingerprint, complete = true
+        rootDir = item.modInfo:getDir(),
+        files = files,
+        modifications = {},
+        signature = signature,
+        fsSignature = snapshot.fingerprint,
+        complete = true
     }
     local fresh = cached ~= nil and cached.complete == true and cached.signature == signature
         and sameFiles(cached.files, files)
@@ -412,8 +405,11 @@ local function scanLoaded(ctx, item, cached, signature, loadedPaths, bridgeFaile
     -- for loaded mods the authoritative list comes from getLoadedLua(), for the rest - from disk
     local files = isLoaded and loadedFiles or MLOS_ModsFiles:listModLuaFiles(modId)
     local result = {
-        rootDir = dir, files = files, modifications = (cached and cached.modifications) or {},
-        signature = signature, complete = false
+        rootDir = dir,
+        files = files,
+        modifications = (cached and cached.modifications) or {},
+        signature = signature,
+        complete = false
     }
 
     if #files == 0 and not bridgeFailed then
@@ -460,23 +456,54 @@ function MLOS_ModsFiles:scanMod(ctx, item, loadedPaths, useBuddy)
     return scanLoaded(ctx, item, cached, signature, loadedPaths, true)
 end
 
-
 --================================================
 --      Layer API
 --================================================
+-- function MLOS_ModsFiles:getData(modList, reread)
+-- 	CM.run(self.load, {
+-- 		args = {self, modList, reread},
+-- 		onStart = self.onStart,
+-- 		onFinish = self.onFinish
+-- 	})
+-- end
+
+-- function MLOS_ModsFiles.onStart() CM:setProgress(0, "[ModsFiles] processing ...") end
+-- function MLOS_ModsFiles.onFinish() CM:setProgress(1, "[ModsFiles] finished ...") end
+
 
 --- Layer entry point, see LayerManager.
-function MLOS_ModsFiles:load(ctx)
-    if ctx.reread or self.cache == nil then self.cache = self:readCache() end
+function MLOS_ModsFiles:load(modList, reread)
+    if utils:tableIsEmpty(self.data) or reread == true then
+        self.data = self:readCache() or {}
+        self.cache = self.data.modsFilesLayer
+    end
 
-    local times = fetchWorkshopTimes(ctx)
+    -- get cache data and active mods differnce
+    local workshopIdToId = {}
+    local missing_workshopIds = {}
+    for i=1, #modList do
+        local item = modList[i].item
+        local cachedData = self.data[item.modId]
+        if not cachedData or cachedData.lastCheckedTime then
+            local wId = item:getWorkshopId()
+            if wId then
+                missing_workshopIds[#missing_workshopIds + 1] = wId
+                workshopIdToId[wId] = item.modId
+            end
+        end
+    end
+        
+
+
+
+    local times = fetchWorkshopTimes()
     self.steamUnavailable = times == nil
     self.workshopTimes = times or {}
 
     local loadedPaths = getLoadedLuaPaths()
     local useBuddy = buddyAvailable()
     local data, notLoaded, stale = {}, {}, {}
-    for i, row in ipairs(ctx.mods) do
+    for i, row in ipairs(modList) do
         local item = row.item
         if item then
             local result, incomplete, rescanned = self:scanMod(ctx, item, loadedPaths, useBuddy)
@@ -499,15 +526,17 @@ end
 
 function MLOS_ModsFiles:getWarnings()
     if not self:hasNotLoadedMods() then return {} end
-    return {{ severity = "WARNING", layer = "ModsFiles",
+    return { {
+        severity = "WARNING",
+        layer = "ModsFiles",
         title = getText("UI_MLOS_Warning_NotLoaded_Title"),
-        message = getText("UI_MLOS_Warning_NotLoaded_Msg", table.concat(self.notLoaded, ", ")) }}
+        message = getText("UI_MLOS_Warning_NotLoaded_Msg", table.concat(self.notLoaded, ", "))
+    } }
 end
 
 ---@return boolean true if the analysis of some enabled mods is incomplete in this Lua session
 function MLOS_ModsFiles:hasNotLoadedMods()
     return not utils:tableIsEmpty(self.notLoaded)
 end
-
 
 return MLOS_ModsFiles

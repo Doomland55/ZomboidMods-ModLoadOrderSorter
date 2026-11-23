@@ -67,6 +67,7 @@ local defaultCategoryConfig = {
 MLOS_CORE = MLOS_CORE or {}
 MLOS_CORE.MOD_VERSION = "2.0.0" -- b42.21.0 Huge refactor
 MLOS_CORE.MLOS_ROOT = "ModLoadOrderSorter"
+MLOS_CORE.MLOS_LAYERS_ROOT = utils:joinpath(MLOS_CORE.MLOS_ROOT, "ModLoadOrderSorter")
 
 MLOS_CORE.preorder = { ModLoadOrderSorter_b42 = 1, ModManager = 1 }
 MLOS_CORE.loadCategories = { on = 0, category = 1, off = 2 }
@@ -115,7 +116,7 @@ end
 
 
 function MLOS_CORE:initCategoryConfig()
-	local filePath = self.MLOS_ROOT .. "/categoriesConfig.txt"
+	local filePath =  utils:joinpath(self.MLOS_ROOT , "/categoriesConfig.txt")
 
 	local function dataToTxt(section, data)
 		if section == "#MLOS_CORE" then section = "MLOS_CORE" end
@@ -166,7 +167,7 @@ function MLOS_CORE:getDataFromString(line, addTo)
 	if value == nil then return end
 
 	local new_value = nil
-	if key == "name" or key == "id" then
+	if key == "name" or key == "id" or key == "version" then
 		new_value = value
 	elseif key == "tags" or key == "flags" then
 		new_value = utils:splitStringBySeparator(value)

@@ -23,4 +23,19 @@ function ModManagerLayer:load(ctx)
 end
 
 
+function ModManagerLayer:onStart(ctx)
+    return nil
+end
+
+
+function ModManagerLayer:onProcess(ctx)
+    return nil
+end
+
+
+function ModManagerLayer:onFinish(ctx)
+    return nil
+end
+
+
 return ModManagerLayer

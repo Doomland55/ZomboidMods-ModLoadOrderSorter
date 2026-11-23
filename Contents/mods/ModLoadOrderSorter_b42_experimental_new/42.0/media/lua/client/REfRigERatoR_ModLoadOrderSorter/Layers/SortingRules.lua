@@ -1,5 +1,6 @@
 local utils = require('REfRigERatoR_ModLoadOrderSorter/Core/1_Utils')
 local core = require('REfRigERatoR_ModLoadOrderSorter/Core/Core')
+local CM = require("REfRigERatoR_ModLoadOrderSorter/Core/CorutineManager.lua")
 local cacheFileExists = cacheFileExists
 
 local RULES_NAME = "sorting_rules.txt"
@@ -8,50 +9,33 @@ local MLOS_SortingRules = {}
 MLOS_SortingRules.data = {} -- saved rules by mod ID
 
 
+
 -- The rules file is read once per Lua session unless a reread is requested.
-function MLOS_SortingRules:ensureData(reread)
-    if not self.cacheLoaded or reread == true then
+function MLOS_SortingRules:getData(_, reread)
+    self:onStart()
+    if utils:tableIsEmpty(self.data) or reread == true then
         self.data = self:readSortingRules()
-        self.cacheLoaded = true
     end
+    self:onFinish()
     return self.data
 end
 
--- Layer entry point, see LayerManager.
-function MLOS_SortingRules:load(ctx)
-    self:ensureData(ctx.reread)
-end
+function MLOS_SortingRules:onStart() CM:setProgress(0, "[SortingRules] processing ...") end
+function MLOS_SortingRules:onFinish() CM:setProgress(1, "[SortingRules] finished") end
+
+
 
 function MLOS_SortingRules:beginEdit()
-    self:ensureData()
-    self.saved = utils:deepCopy(self.data)
-    self.working = utils:deepCopy(self.saved)
-    return self.working
+    self:getData()
+    return utils:deepCopy(self.data)
 end
 
-function MLOS_SortingRules:discardEdit()
-    self.working = utils:deepCopy(self.saved or self.data)
-    return self.working
-end
-
-function MLOS_SortingRules:setPosition(modId, field, value)
-    if field ~= "loadFirst" and field ~= "loadLast" then return end
-    if value ~= "on" and value ~= "category" then value = "off" end
-    self.working = self.working or utils:deepCopy(self.data)
-    local rule = self.working[modId] or {}
-    self.working[modId] = rule
-    rule[field] = value
-    if value ~= "off" then rule[field == "loadFirst" and "loadLast" or "loadFirst"] = "off" end
-end
-
-function MLOS_SortingRules:commitEdit()
-    local working = self.working or self.data
-    if not self:saveSortingRules(working) then return false end
-    self.data = utils:deepCopy(working)
-    self.saved = utils:deepCopy(self.data)
-    self.working = utils:deepCopy(self.data)
+function MLOS_SortingRules:commitEdit(newData)
+    if not self:saveSortingRules(newData) then return false end
+    self.data = newData
     return true
 end
+
 
 
 ---@return string | nil
@@ -71,7 +55,7 @@ end
 ---@param srData table|nil optional
 ---@param fileName string|nil optional
 function MLOS_SortingRules:saveSortingRules(srData, fileName)
-	local rulesFile = core.MLOS_ROOT .. "/" .. (fileName or RULES_NAME)
+	local rulesFile = utils:joinpath(core.MLOS_LAYERS_ROOT, fileName or RULES_NAME)
 	print("MLOS - Saving sorting rules: ", rulesFile)
 	return core:saveTxtFile(rulesFile, srData or self.data or {}, function(...) return self:getSRDataText(...) end)
 end
@@ -80,7 +64,7 @@ end
 ---@return table rules sorting rules from file
 function MLOS_SortingRules:readSortingRules(fileName)
     local rulesName = fileName or RULES_NAME
-    local rulesFile = core.MLOS_ROOT .. "/" .. rulesName
+    local rulesFile = utils:joinpath(core.MLOS_LAYERS_ROOT, rulesName)
     print("MLOS - Reading sorting rules: ", rulesFile)
     -- Migrate the legacy file once without prepending the root twice.
     if cacheFileExists(rulesFile) ~= true then
