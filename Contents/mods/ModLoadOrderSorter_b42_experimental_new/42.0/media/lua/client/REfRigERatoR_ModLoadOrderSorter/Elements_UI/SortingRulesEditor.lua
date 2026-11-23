@@ -11,9 +11,9 @@ local popup = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/WarningPopup'
 local SortingRulesEditor = ISPanelJoypad:derive('MLOS_SortingRulesEditor')
 -- Shared by rule targets and their edit buttons (in descending display priority).
 local ruleStyles = {
-    { key = "incompatibleMods", button = "incompatible", color = { r = .65, g = .25, b = .85, a = .35 } },
-    { key = "loadBefore", button = "loadBefore", color = { r = .2, g = .7, b = .3, a = .35 } },
-    { key = "loadAfter", button = "loadAfter", color = { r = .2, g = .4, b = .9, a = .35 } },
+    { key = "incompatibleMods", letter = "I", button = "incompatible", color = { r = .65, g = .25, b = .85, a = .35 } },
+    { key = "loadBefore", letter = "B", button = "loadBefore", color = { r = .2, g = .7, b = .3, a = .35 } },
+    { key = "loadAfter", letter = "A", button = "loadAfter", color = { r = .2, g = .4, b = .9, a = .35 } },
 }
 
 local FONT_HGT_SMALL = getTextManager():getFontHeight(UIFont.Small)
@@ -84,6 +84,13 @@ function SortingRulesEditor:hasRuleTargets(modId, key)
     return rule ~= nil and rule[key] ~= nil and #rule[key] > 0
 end
 
+-- Shared geometry; reserve the scrollbar gutter even when it is hidden.
+local function badgeGeometry(list, height)
+    local size = height - 4
+    local gutter = list.vscroll and list.vscroll:getWidth() or 16
+    return list.width - gutter - 4, size
+end
+
 local function drawDependencyBadge(list, y, size, letter, left)
     list:drawRect(left, y + 2, size, size, 1, .12, .12, .12)
     list:drawRectBorder(left, y + 2, size, size, .9, .7, .7, .7)
@@ -92,9 +99,7 @@ local function drawDependencyBadge(list, y, size, letter, left)
 end
 
 function SortingRulesEditor:drawRuleBadges(list, y, item)
-    local size = item.height - 4
-    local gutter = list.vscroll and list.vscroll:getWidth() or 16
-    local right = list.width - gutter - 4
+    local right, size = badgeGeometry(list, item.height)
     -- Fixed slots from left to right: R, D | A, B, I.
     local layer = core.layers.ModsInfo
     local info = layer and layer.data[item.item.modId]
@@ -113,8 +118,7 @@ function SortingRulesEditor:drawRuleBadges(list, y, item)
             local c = style.color
             list:drawRect(left - 1, y + 1, size + 2, size + 2, 1, .08, .08, .08)
             list:drawRect(left, y + 2, size, size, 1, c.r, c.g, c.b)
-            local letter = style.key == "loadAfter" and "A" or style.key == "loadBefore" and "B" or "I"
-            list:drawTextCentre(letter, left + size / 2, y + 2 + (size - FONT_HGT_SMALL) / 2,
+            list:drawTextCentre(style.letter, left + size / 2, y + 2 + (size - FONT_HGT_SMALL) / 2,
                 1, 1, 1, 1, UIFont.Small)
         end
     end
@@ -148,20 +152,18 @@ function SortingRulesEditor:onComboBoxChange(combo)
 end
 
 function SortingRulesEditor:refreshEditingList()
-    self:refreshRuleBackgrounds()
     self.editingModeList:clear()
     if not self.editMode then return end
-    for _, id in ipairs(self.editRule[self.editMode.key] or {}) do
+    self:refreshRuleBackgrounds()
+    for _, id in ipairs(self.editRule[self.editMode.key]) do
         local data = self.modsById[id] or {modId = id, name = id}
         self.editingModeList:addItem("", data)
     end
 end
 
--- Reserve the scrollbar gutter even when it is hidden, so the cross never moves.
 local function removeButtonBounds(list)
-    local size = list.itemheight - 4
-    local gutter = list.vscroll and list.vscroll:getWidth() or 16
-    return list.width - gutter - size - 4, size
+    local right, size = badgeGeometry(list, list.itemheight)
+    return right - size, size
 end
 
 function SortingRulesEditor:onEditingListMouseDown(list, x, y)
@@ -356,7 +358,6 @@ function SortingRulesEditor:onModClick()
     self:refreshRuleBackgrounds()
     local selected = self.modsOrderList.items[self.modsOrderList.selected]
     local rule = selected and self.sortingRules[selected.item.modId] or {}
-    rule = rule or {}
     -- Assigning selected does not invoke the change callback or modify rules.
     selectComboValue(self.loadFirstComboBox, rule.loadFirst or "off")
     selectComboValue(self.loadLastComboBox, rule.loadLast or "off")

@@ -255,6 +255,22 @@ view:simulate()
 assert(calls == 1)
 view:cancelMode()
 assert(view.simulateBtn.enable)
+-- Applying/cancelling refreshes highlights exactly once on mode exit.
+local originalRefresh = view.refreshRuleBackgrounds
+local refreshCount = 0
+view.refreshRuleBackgrounds = function(self)
+    refreshCount = refreshCount + 1
+    return originalRefresh(self)
+end
+view:onEditModeClick(view.loadAfter)
+refreshCount = 0
+view:cancelMode()
+assert(refreshCount == 1)
+view:onEditModeClick(view.loadAfter)
+refreshCount = 0
+view:applyMode()
+assert(refreshCount == 1)
+view.refreshRuleBackgrounds = originalRefresh
 -- fillMods builds an independent ID index and replaces it on refilling.
 local filled = setmetatable({owner = {modList = {items = {
     {item = {modId = 'active', name = 'Active mod', icon = 'icon.png'}}}}},
