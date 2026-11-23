@@ -121,6 +121,7 @@ end
 function SortingRulesEditor:finishEdit()
     self.editMode = nil
     self.editRule = nil
+    self.editOriginalRule = nil
     self.editModId = nil
     self.editSelected = nil
     self.modeApplyBtn.enable = false
@@ -133,7 +134,7 @@ end
 
 function SortingRulesEditor:cancelMode()
     if not self.editMode then return end
-    self.sortingRules[self.editModId] = utils:deepCopy(core.layers.SortingRules.data[self.editModId])
+    self.sortingRules[self.editModId] = utils:deepCopy(self.editOriginalRule)
     self:finishEdit()
 end
 
@@ -150,7 +151,9 @@ function SortingRulesEditor:onEditModeClick(button)
     self.editMode = style
     self.editModId = selected.item.modId
     self.editSelected = self.modsOrderList.selected
-    self.editRule = utils:deepCopy(self.sortingRules[self.editModId] or {})
+    -- Keep nil intact so cancelling a new rule does not leave an empty entry.
+    self.editOriginalRule = utils:deepCopy(self.sortingRules[self.editModId])
+    self.editRule = utils:deepCopy(self.editOriginalRule or {})
     self.editRule[style.key] = self.editRule[style.key] or {}
     button.borderColor = {r = 1, g = 1, b = 1, a = 1}
     self.modeApplyBtn.enable = true

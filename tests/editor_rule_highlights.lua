@@ -122,8 +122,24 @@ assert(core.layers.SortingRules.data.mod1.loadFirst == nil)
 view:onEditModeClick(view.loadAfter)
 view:onModsOrderMouseDown(view.modsOrderList, 2, 0)
 view:onEditModeClick(view.loadAfter)
-assert(not view.editMode and view.sortingRules.mod1.loadFirst == nil)
+assert(not view.editMode and view.sortingRules.mod1.loadFirst == 'on')
+assert(view.editOriginalRule == nil)
 assert(view.sortingRules.mod1.loadAfter[1] == 'mod2')
+-- Switching modes also preserves previously applied, unsaved rules.
+view:onEditModeClick(view.loadAfter)
+view:onModsOrderMouseDown(view.modsOrderList, 2, 0)
+view:onEditModeClick(view.loadBefore)
+assert(view.sortingRules.mod1.loadAfter[1] == 'mod2')
+assert(view.editRule.loadFirst == 'on')
+view:cancelMode()
+-- Cancelling a mod with no original rule restores nil, not an empty table.
+view.modsOrderList.selected = 2
+view.sortingRules.mod2 = nil
+view:onEditModeClick(view.incompatible)
+view:onModsOrderMouseDown(view.modsOrderList, 1, 0)
+view:cancelMode()
+assert(view.sortingRules.mod2 == nil)
+view.modsOrderList.selected = 1
 view.categoryComboBox.selected = 2
 view:onComboBoxChange(view.categoryComboBox)
 assert(view.sortingRules.mod1.category == 'code')
