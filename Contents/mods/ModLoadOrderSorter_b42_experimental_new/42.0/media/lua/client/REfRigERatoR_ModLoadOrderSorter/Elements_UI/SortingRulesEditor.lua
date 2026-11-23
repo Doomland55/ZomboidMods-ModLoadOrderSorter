@@ -143,45 +143,68 @@ function SortingRulesEditor:updateScrollLists()
 end
 
 
+-- Refresh only on selection/tab events, never from the draw loop.
+function SortingRulesEditor:refreshInfoList()
+    self.infoList:clear()
+    self.infoList:setYScroll(0)
+    local selected = self.modsOrderList.items[self.modsOrderList.selected]
+    if not selected then return end
+
+    local id = selected.item.modId
+    local infoLayer = core.layers.ModsInfo
+    local info = infoLayer and infoLayer.data[id] or {}
+    local tab = self.infoList.selectedTab
+    local data = {}
+    if tab == "FILES_TAB" then
+        local filesLayer = core.layers.ModsFiles
+        local mod = filesLayer and filesLayer.data[id]
+        data = mod and mod.files or {}
+    elseif tab == "REQUIRED_TAB" then
+        data = info.requirements or {}
+    elseif tab == "REQUIRED_BY_TAB" then
+        data = info.requiredBy or {}
+    end
+
+    for _, value in ipairs(data) do
+        local mod = tab ~= "FILES_TAB" and infoLayer and infoLayer.data[value]
+        self.infoList:addItem("", {name = mod and mod.name or value,
+            modId = tab ~= "FILES_TAB" and value or nil})
+    end
+end
+
+local function selectComboValue(combo, value)
+    combo.selected = 1
+    for i = 1, #combo.options do
+        if combo:getOptionData(i) == value then
+            combo.selected = i
+            return
+        end
+    end
+end
+
+function SortingRulesEditor:onModClick()
+    local selected = self.modsOrderList.items[self.modsOrderList.selected]
+    local rule = selected and self.sortingRules[selected.item.modId] or {}
+    rule = rule or {}
+    -- Assigning selected does not invoke the change callback or modify rules.
+    selectComboValue(self.loadFirstComboBox, rule.loadFirst or "off")
+    selectComboValue(self.loadLastComboBox, rule.loadLast or "off")
+    selectComboValue(self.categoryComboBox, rule.category or "automatic")
+    self.loadFirstComboBox.enable = selected ~= nil
+    self.loadLastComboBox.enable = selected ~= nil
+    self.categoryComboBox.enable = selected ~= nil
+    self:refreshInfoList()
+end
+
 function SortingRulesEditor:selectTab(button)
     if self.infoList.selectedTab == button.internal then return end
-
-    local function changeColor(btn, toDark)
-        local color = toDark and borderColorLight or borderColorDark
+    self.infoList.selectedTab = button.internal
+    for _, btn in ipairs({self.filesTab, self.requiredTab, self.requiredByTab}) do
+        local color = btn.internal == button.internal and borderColorLight or borderColorDark
         btn.borderColor = color
         btn.textColor = color
     end
-
-    local function loadInfo(btn)
-        local label = btn.internal
-
-        local selectedItem = self.modsOrderList.items[self.modsOrderList.selected]
-        if not selectedItem then return end
-        local sr = core.layers.SortingRules.data[selectedItem.item.modId]
-        if not sr then return end
-
-        self.infoList:clear()
-        local data = {}
-        if label == "FILES_TAB" then -- TODO replace with propper data
-        elseif label == "REQUIRED_TAB" then
-            data = sr.loadAfter or {}  -- TODO replace with propper data
-        elseif label == "REQUIRED_BY_TAB" then
-            data = sr.loadBefore or {} -- TODO replace with propper data
-        end
-
-        for i=1, #data do
-            self.infoList:addItem("", {name=data[i]})
-        end
-    end
-
-    local allTabButtons = {self.filesTab, self.requiredTab, self.requiredByTab}
-    for i=1, #allTabButtons do
-        local btn = allTabButtons[i]
-        if btn.internal == button.internal then loadInfo(btn) end
-        changeColor(btn, btn.internal == button.internal)
-    end
-
-    self.infoList.selectedTab = button.internal
+    self:refreshInfoList()
 end
 
 
@@ -222,11 +245,10 @@ function SortingRulesEditor:createChildren()
     modsOrder.doDrawItem = function(list, y, item, alt)
         return scrollDoDrawItem(list, y, item, alt, self:getRuleBackground(item.item.modId))
     end
-    -- modsOrder.onMouseDown = function(box, xx, yy)
-    --     ISScrollingListBox.onMouseDown(box, xx, yy)
-    --     local row = box.items[box.selected]
-    --     if row then click(self, row.item.modId) end
-    -- end
+    modsOrder.onMouseDown = function(box, x, y)
+        ISScrollingListBox.onMouseDown(box, x, y)
+        self:onModClick()
+    end
     scrollExt:addSearchEntry(modsOrder, nil, true)
     scrollExt:addBackground(modsOrder, nil, {})
     self.modsOrderList = modsOrder
@@ -270,13 +292,20 @@ function SortingRulesEditor:createChildren()
     self.loadLastComboBox = ISComboBox:new(center_x, self.loadFirstComboBox:getBottom() + PADDING, self.loadFirstComboBox.width, BUTTON_HGT, self, self.onComboBoxChange)
     self:addChild(self.loadLastComboBox)
 
-    for name, _ in pairs(core.loadCategories) do
+    for _, name in ipairs({"off", "on", "category"}) do
         self.loadFirstComboBox:addOptionWithData(loadFirstTr .. ": " .. tostring(loadTr[name]), name)
         self.loadLastComboBox:addOptionWithData(loadLastTr .. ": " .. tostring(loadTr[name]), name)
     end
 
     self.categoryComboBox = ISComboBox:new(center_x, self.loadLastComboBox:getBottom() + PADDING, self.loadFirstComboBox.width, BUTTON_HGT, self, self.onComboBoxChange)
     self:addChild(self.categoryComboBox)
+    self.categoryComboBox:addOptionWithData("Automatic", "automatic")
+    for _, category in ipairs(core.rawCategoryOrder) do
+        self.categoryComboBox:addOptionWithData(category, category)
+    end
+    self.loadFirstComboBox.enable = false
+    self.loadLastComboBox.enable = false
+    self.categoryComboBox.enable = false
 
 
 
