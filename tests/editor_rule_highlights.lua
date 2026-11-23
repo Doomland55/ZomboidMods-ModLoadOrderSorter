@@ -156,4 +156,29 @@ assert(view.sortingRules.mod1.category == nil)
 function core.layers.SortingRules:commitEdit(data) self.data = data; return true end
 view:applyChanges()
 assert(core.layers.SortingRules.data ~= view.sortingRules)
+-- Remove a disabled/missing mod directly from the editing list, including scrolling.
+view.editingModeList.addItem = function(self, _, item)
+    self.items[#self.items + 1] = {item = item}
+end
+view.sortingRules.mod1.loadAfter = {'mod2', 'disabledMod'}
+view:onEditModeClick(view.loadAfter)
+local list = view.editingModeList
+list.width = 200; list.itemheight = 20
+list.getYScroll = function() return -20 end
+list.rowAt = function(_, _, y) return math.floor((y + 20) / 20) + 1 end
+assert(list.items[2].item.modId == 'disabledMod')
+view:onEditingListMouseDown(list, 10, 5) -- name is not a remove action
+assert(#view.editRule.loadAfter == 2)
+view:onEditingListMouseDown(list, 166, 1) -- outside icon vertically
+assert(#view.editRule.loadAfter == 2)
+view:onEditingListMouseDown(list, 166, 5)
+assert(#view.editRule.loadAfter == 1 and #list.items == 1)
+assert(#view.sortingRules.mod1.loadAfter == 2) -- still a draft
+view:cancelMode()
+assert(view.sortingRules.mod1.loadAfter[2] == 'disabledMod')
+view:onEditModeClick(view.loadAfter)
+view:onEditingListMouseDown(list, 166, 5)
+view:applyMode()
+assert(#view.sortingRules.mod1.loadAfter == 1)
+view:onEditingListMouseDown(list, 166, 5) -- safe outside edit mode
 print('editor_rule_highlights: OK')

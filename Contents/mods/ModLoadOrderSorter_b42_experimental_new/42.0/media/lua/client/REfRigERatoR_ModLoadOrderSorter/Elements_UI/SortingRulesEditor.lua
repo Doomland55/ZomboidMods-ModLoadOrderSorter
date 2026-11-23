@@ -118,6 +118,30 @@ function SortingRulesEditor:refreshEditingList()
     end
 end
 
+-- Reserve the scrollbar gutter even when it is hidden, so the cross never moves.
+local function removeButtonBounds(list)
+    local size = list.itemheight - 4
+    local gutter = list.vscroll and list.vscroll:getWidth() or 16
+    return list.width - gutter - size - 4, size
+end
+
+function SortingRulesEditor:onEditingListMouseDown(list, x, y)
+    if not self.editMode then return end
+    local index = list:rowAt(x, y)
+    local row = index and list.items[index]
+    if not row then return end
+    local left, size = removeButtonBounds(list)
+    -- rowAt handles scrolling; reject the padding above/below the icon as well.
+    local top = (index - 1) * list.itemheight + list:getYScroll() + 2
+    if x < left or x >= left + size or y < top or y >= top + size then return end
+    local ids = self.editRule[self.editMode.key]
+    local at = utils:indexOf(ids, row.item.modId)
+    if at then
+        table.remove(ids, at)
+        self:refreshEditingList()
+    end
+end
+
 function SortingRulesEditor:finishEdit()
     self.editMode = nil
     self.editRule = nil
@@ -410,7 +434,21 @@ function SortingRulesEditor:createChildren()
     local editingModeList = scrollExt.createList(self, PADDING * 2 + innerWitdth * 0.6, self.modsOrderList.y, innerWitdth * 0.4, innerHeight * 0.5 - PADDING - BUTTON_HGT)
     editingModeList.itemheight = FONT_HGT_SMALL + 8
     editingModeList.font = UIFont.Small
-    editingModeList.doDrawItem = scrollDoDrawItem
+    editingModeList.doDrawItem = function(list, y, item, alt)
+        local nextY = scrollDoDrawItem(list, y, item, alt)
+        if self.editMode then
+            local left, size = removeButtonBounds(list)
+            -- Opaque backing keeps long mod names from obscuring the action.
+            list:drawRect(left - 2, y, size + 4, item.height, 1, .08, .08, .08)
+            list:drawRect(left, y + 2, size, size, 1, .55, .08, .08)
+            list:drawTextCentre("X", left + size / 2, y + 2 + (size - FONT_HGT_SMALL) / 2,
+                1, .3, .3, 1, UIFont.Small)
+        end
+        return nextY
+    end
+    editingModeList.onMouseDown = function(list, x, y)
+        self:onEditingListMouseDown(list, x, y)
+    end
     scrollExt:addTitle(editingModeList, function()
         if not self.editMode then return "Mods in selected mode:" end
         return getText("UI_MLOS_Editor_Targets", self[self.editMode.button].title,
