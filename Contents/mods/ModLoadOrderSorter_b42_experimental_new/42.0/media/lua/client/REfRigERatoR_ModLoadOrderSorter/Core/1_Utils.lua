@@ -37,10 +37,22 @@ function Refr_Utils:inRange(val, min, max)
 end
 
 
-function Refr_Utils:pointInRect(x, y, rect)
-    local buttom = rect.buttom or rect.y + rect.height
-    local right = rect.right or rect.x + rect.width
-	return x > rect.x and x < right and y > rect.y and y < buttom
+function Refr_Utils.pointInRectCoords(px, py, rx, ry, rw, rh)
+	return px >= rx and px <= rx + rw and
+		   py >= ry and py <= ry + rh
+end
+
+function Refr_Utils.pointInRect(x, y, rect)
+	return Refr_Utils.pointInRectCoords(x,y, rect.x, rect.y, rect.width, rect.height)
+end
+
+function Refr_Utils.rectInRectCoords(sx, sy, sw, sh, bx, by, bw, bh)
+    return sx < bx + bw and sx + sw > bx and
+           sy < by + bh and sy + sh > by
+end
+
+function Refr_Utils:rectInRect(small, big)
+    return Refr_Utils.rectInRectCoords(small.x, small.y, small.width, small.height, big.x, big.y, big.width, big.height)
 end
 
 

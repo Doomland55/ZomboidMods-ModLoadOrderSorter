@@ -43,6 +43,20 @@ function SortingRulesEditor:instantiate()
     self:selectTab(self.filesTab)
 end
 
+
+
+function SortingRulesEditor:prerender()
+    ISPanelJoypad.prerender(self)
+    local title = 'Sorting Rules Editor'
+    if self.editMode then
+        local row = self.modsOrderList.items[self.editSelected]
+        title = getText("UI_MLOS_Editor_Editing", self[self.editMode.button].title, row.item.name)
+    end
+    if self.hasUnsavedChanges then title = title .. " *" end
+    self:drawTextCentre(title, self.width * 0.5, PADDING * 2, 1, 1, 1, 1, UIFont.Large)
+end
+
+
 local function createButton(x,y, width, height, name, target, onClick)
     local button = ISButton:new(x, y, width, height, name, target, onClick)
     button:initialise()
@@ -75,7 +89,7 @@ function SortingRulesEditor:updateDirty(modId)
     self.badgeTooltipCache = nil
     local rule = self.editMode and self.editModId == modId and self.editRule or self.sortingRules[modId]
     self.dirtyRules[modId] = not sameRule(rule, self.savedRules[modId]) or nil
-    self.hasUnsavedChanges = next(self.dirtyRules) ~= nil
+    self.hasUnsavedChanges = not utils:tableIsEmpty(self.dirtyRules)
     self.applyBtn.enable = self.hasUnsavedChanges
 end
 
@@ -270,25 +284,20 @@ function SortingRulesEditor:refreshEditingList()
     end
 end
 
-local function removeButtonBounds(list)
-    local right, size = badgeGeometry(list, list.itemheight)
-    return right - size, size
-end
 
-function SortingRulesEditor:onEditingListMouseDown(list, x, y)
-    if not self.editMode then return end
-    local index = list:rowAt(x, y)
-    local row = index and list.items[index]
-    if not row then return end
-    local left, size = removeButtonBounds(list)
-    -- rowAt handles scrolling; reject the padding above/below the icon as well.
-    local top = (index - 1) * list.itemheight + list:getYScroll() + 2
-    if x < left or x >= left + size or y < top or y >= top + size then return end
-    local ids = self.editRule[self.editMode.key]
-    local at = utils:indexOf(ids, row.item.modId)
+
+local function onEditingListMouseDown(self, x, y)
+    local parent = self.parent
+    if not parent.editMode then return end
+
+    local item = self.items[self.mouseoverselected]
+    if not item then return end
+
+    local ids = parent.editRule[parent.editMode.key]
+    local at = utils:indexOf(ids, item.item.modId)
     if at then
         table.remove(ids, at)
-        self:refreshEditingList()
+        parent:refreshEditingList()
     end
 end
 
@@ -495,6 +504,36 @@ function SortingRulesEditor:selectTab(button)
     self:refreshInfoList()
 end
 
+
+function SortingRulesEditor:close()
+    if self.closeDialog then return end
+    if self.hasUnsavedChanges then
+        self:hideBadgeTooltip()
+        local w = 300
+        local h = 100
+        local dialog = ISModalDialog:new(getCore():getScreenWidth()/2 - w/2, getCore():getScreenHeight() / 2 - h/2, w, h, getText("UI_MLOS_Editor_Discard"), true,
+            self, function(editor, button)
+                editor.closeDialog = nil
+                if button.internal == "YES" then editor:discardAndClose() end
+            end)
+        self.closeDialog = dialog
+        dialog:initialise()
+        dialog:addToUIManager()
+        dialog:setAlwaysOnTop(true)
+        return
+    end
+    self:discardAndClose()
+end
+
+
+function SortingRulesEditor:discardAndClose()
+    self:hideBadgeTooltip()
+    self:setVisible(false)
+    self.owner:setVisible(true)
+    self:removeFromUIManager()
+end
+
+
 function SortingRulesEditor:createChildren()
     local y_offset = 50 + PADDING
     local innerWitdth = self.width - (PADDING * 4)
@@ -515,24 +554,23 @@ function SortingRulesEditor:createChildren()
     self.warningPopup:ignoreHeightChange()
     self:addChild(self.warningPopup)
 
-    self.applyBtn = createButton(self.width - PADDING * 2 - BUTTON_HGT * 4, self.height - PADDING - BUTTON_HGT, BUTTON_HGT * 4, BUTTON_HGT, "Apply", self, self.applyChanges)
+    self.applyBtn = createButton(self.width - PADDING * 2 - BUTTON_HGT * 4, self.height - PADDING - BUTTON_HGT, BUTTON_HGT * 4, BUTTON_HGT, getText("UI_MLOS_Editor_Apply"), self, self.applyChanges)
     self.applyBtn.enable = false
     self:addChild(self.applyBtn)
 
     self.closeBtn = createButton(PADDING * 2, self.applyBtn.y, BUTTON_HGT * 4, BUTTON_HGT, "Close", self, self.close)
     self:addChild(self.closeBtn)
 
-    self.simulateBtn = createButton((self.width - BUTTON_HGT * 4) / 2, self.applyBtn.y,
-        BUTTON_HGT * 4, BUTTON_HGT, getText("UI_MLOS_Editor_Simulate"), self, self.simulate)
+    self.simulateBtn = createButton((self.width - BUTTON_HGT * 4) / 2, self.applyBtn.y, BUTTON_HGT * 4, BUTTON_HGT, getText("UI_MLOS_Editor_Simulate"), self, self.simulate)
     self:addChild(self.simulateBtn)
     -- #endregion
 
     -- #region Current mods order (left)
     local modsOrder = scrollExt.createList(self, PADDING * 2, y_offset, innerWitdth * 0.4 - PADDING, innerHeight)
     modsOrder.itemheight = FONT_HGT_SMALL + 8
-    scrollExt:addTitle(modsOrder, function()
-        return self.editMode and getText("UI_MLOS_Editor_ClickHint") or "Mods Order:"
-    end, nil, nil, UIFont.Small, - BUTTON_HGT - PADDING)
+    scrollExt:addTitle(modsOrder,
+        function() return self.editMode and getText("UI_MLOS_Editor_ClickHint") or "Mods Order:" end,
+        nil, nil, UIFont.Small, - BUTTON_HGT - PADDING * 0.5)
     modsOrder.borderColor = borderColorLight
     modsOrder.font = UIFont.Small
     modsOrder.doDrawItem = function(list, y, item, alt)
@@ -622,26 +660,29 @@ function SortingRulesEditor:createChildren()
     local editingModeList = scrollExt.createList(self, PADDING * 2 + innerWitdth * 0.6, self.modsOrderList.y, innerWitdth * 0.4, innerHeight * 0.5 - PADDING - BUTTON_HGT)
     editingModeList.itemheight = FONT_HGT_SMALL + 8
     editingModeList.font = UIFont.Small
-    editingModeList.doDrawItem = function(list, y, item, alt)
-        local nextY = scrollDoDrawItem(list, y, item, alt)
-        if self.editMode then
-            local left, size = removeButtonBounds(list)
-            -- Opaque backing keeps long mod names from obscuring the action.
-            list:drawRect(left - 2, y, size + 4, item.height, 1, .08, .08, .08)
-            list:drawRect(left, y + 2, size, size, 1, .55, .08, .08)
-            list:drawTextCentre("X", left + size / 2, y + 2 + (size - FONT_HGT_SMALL) / 2,
-                1, .3, .3, 1, UIFont.Small)
-        end
-        return nextY
-    end
-    editingModeList.onMouseDown = function(list, x, y)
-        self:onEditingListMouseDown(list, x, y)
-    end
+    editingModeList.selected = 0
+    editingModeList.doDrawItem = scrollDoDrawItem
+    scrollExt.addItemElement(editingModeList, editingModeList.width - 8 - editingModeList.itemheight , 3, editingModeList.itemheight - 3, editingModeList.itemheight - 3, Texture.getWhite(), true, "Remove item", onEditingListMouseDown)
+    -- editingModeList.doDrawItem = function(list, y, item, alt)
+    --     local nextY = scrollDoDrawItem(list, y, item, alt)
+    --     if self.editMode then
+    --         local left, size = removeButtonBounds(list)
+    --         -- Opaque backing keeps long mod names from obscuring the action.
+    --         list:drawRect(left - 2, y, size + 4, item.height, 1, .08, .08, .08)
+    --         list:drawRect(left, y + 2, size, size, 1, .55, .08, .08)
+    --         list:drawTextCentre("X", left + size / 2, y + 2 + (size - FONT_HGT_SMALL) / 2,
+    --             1, .3, .3, 1, UIFont.Small)
+    --     end
+    --     return nextY
+    -- end
+    -- editingModeList.onMouseDown = function(list, x, y)
+    --     self:onEditingListMouseDown(list, x, y)
+    -- end
     scrollExt:addTitle(editingModeList, function()
         if not self.editMode then return "Mods in selected mode:" end
         return getText("UI_MLOS_Editor_Targets", self[self.editMode.button].title,
             tostring(#(self.editRule[self.editMode.key] or {})))
-    end, nil, nil, UIFont.Small, - BUTTON_HGT - PADDING)
+    end, nil, nil, UIFont.Small, - BUTTON_HGT - PADDING * 0.5)
     scrollExt:addBackground(editingModeList, nil, {})
     editingModeList.borderColor = borderColorLight
     self.editingModeList = editingModeList
@@ -670,41 +711,6 @@ function SortingRulesEditor:createChildren()
 
     --#endregion
 
-end
-
-function SortingRulesEditor:prerender()
-    ISPanelJoypad.prerender(self)
-    local title = 'Sorting Rules Editor'
-    if self.editMode then
-        local row = self.modsOrderList.items[self.editSelected]
-        title = getText("UI_MLOS_Editor_Editing", self[self.editMode.button].title, row.item.name)
-    end
-    if self.hasUnsavedChanges then title = title .. " *" end
-    self:drawTextCentre(title, self.width * 0.5, PADDING * 2, 1, 1, 1, 1, UIFont.Large)
-end
-
-function SortingRulesEditor:close()
-    if self.closeDialog then return end
-    if self.hasUnsavedChanges then
-        self:hideBadgeTooltip()
-        local dialog = ISModalDialog:new(0, 0, 420, 160, getText("UI_MLOS_Editor_Discard"), true,
-            self, function(editor, button)
-                editor.closeDialog = nil
-                if button.internal == "YES" then editor:discardAndClose() end
-            end)
-        self.closeDialog = dialog
-        dialog:initialise()
-        dialog:addToUIManager()
-        return
-    end
-    self:discardAndClose()
-end
-
-function SortingRulesEditor:discardAndClose()
-    self:hideBadgeTooltip()
-    self:setVisible(false)
-    self.owner:setVisible(true)
-    self:removeFromUIManager()
 end
 
 return SortingRulesEditor

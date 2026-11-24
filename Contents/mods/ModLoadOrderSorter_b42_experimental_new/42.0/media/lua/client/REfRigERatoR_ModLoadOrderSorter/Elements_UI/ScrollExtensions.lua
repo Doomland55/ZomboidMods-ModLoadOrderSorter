@@ -615,35 +615,38 @@ end
 -- #region Override render
 
 local function modListBox_drawOnlyModCard(self, y, item, alt)
-    local mouseX = self:getMouseX()
-    local mouseY = self:getMouseY()
+    -- isVisible
+    if MLOS_ScrollExtensions.itemIsVisible(self, y, item) then
+        local mouseX = self:getMouseX()
+        local mouseY = self:getMouseY()
 
-    local isMouseOverItem = self.mouseoverselected == item.index
-    local selected_map = getSelectedItemsDict(self)
+        local isMouseOverItem = self.mouseoverselected == item.index
+        local selected_map = getSelectedItemsDict(self)
 
-    if selected_map[item.index] ~= nil then
-        local color = core.COLORS.selection
-        self:drawRect(0, (y), self:getWidth(), item.height - 1, color.a, color.r, color.g, color.b)
+        if selected_map[item.index] ~= nil then
+            local color = core.COLORS.selection
+            self:drawRect(0, (y), self:getWidth(), item.height - 1, color.a, color.r, color.g, color.b)
+        end
+
+        self:drawRectBorder(0, (y), self:getWidth(), item.height, isMouseOverItem and 1 or 0.5, self.borderColor.r, self.borderColor.g, self.borderColor.b)
+
+        -- mod card (vanilla code) do not touch
+        local shift = (item.height - self.boxSize) / 2
+        local mouseOverDragTexture = utils.pointInRectCoords(mouseX, mouseY, shift, shift + y, self.boxSize, self.boxSize)
+        self:drawTexture(self.dragTexture, shift, shift + y, mouseOverDragTexture and 1 or 0.5, 1, 1, 1)
+        if mouseOverDragTexture and self.mouseOverDragIcon ~= item then
+            self.mouseOverDragIcon = item
+        end
+
+        if item.item.icon ~= "" then
+            self:drawTextureScaled(getTexture(item.item.icon), item.height + 8, y + (item.height - 28) / 2, 28, 28, 1, 1, 1, 1)
+        else
+            self:drawTextureScaled(Texture.getWhite(), item.height + 8, y + (item.height - 28) / 2, 28, 28, 0.1, 1, 1, 1)
+        end
+
+        local itemPadY = self.itemPadY or (item.height - self.fontHgt) / 2
+        self:drawText(item.item.name, item.height + 50, (y) + itemPadY, item.color.r, item.color.g, item.color.b, 0.9, self.font)
     end
-
-    self:drawRectBorder(0, (y), self:getWidth(), item.height, isMouseOverItem and 1 or 0.5, self.borderColor.r, self.borderColor.g, self.borderColor.b)
-
-    -- mod card (vanilla code) do not touch
-    local shift = (item.height - self.boxSize) / 2
-    local mouseOverDragTexture = utils:pointInRect(mouseX, mouseY, { x = shift, y = shift + y, height = self.boxSize, width = self.boxSize })
-    self:drawTexture(self.dragTexture, shift, shift + y, mouseOverDragTexture and 1 or 0.5, 1, 1, 1)
-    if mouseOverDragTexture and self.mouseOverDragIcon ~= item then
-        self.mouseOverDragIcon = item
-    end
-
-    if item.item.icon ~= "" then
-        self:drawTextureScaled(getTexture(item.item.icon), item.height + 8, y + (item.height - 28) / 2, 28, 28, 1, 1, 1, 1)
-    else
-        self:drawTextureScaled(Texture.getWhite(), item.height + 8, y + (item.height - 28) / 2, 28, 28, 0.1, 1, 1, 1)
-    end
-
-    local itemPadY = self.itemPadY or (item.height - self.fontHgt) / 2
-    self:drawText(item.item.name, item.height + 50, (y) + itemPadY, item.color.r, item.color.g, item.color.b, 0.9, self.font)
 
     if item.y0 ~= y then item.y0 = y end
     y = y + item.height
@@ -893,7 +896,121 @@ end
 -- #endregion
 
 
+function MLOS_ScrollExtensions.itemIsVisible(scrollObject, y, item)
+    if y == 0 then scrollObject._curScrollY = scrollObject:getYScroll() end
+    if utils.rectInRectCoords(0, y + scrollObject._curScrollY, scrollObject.width, item.height, 0, 0 , scrollObject.width, scrollObject.height) then
+        return true
+    end
+    return false
+end
 
+
+-- #region addItemElement
+function MLOS_ScrollExtensions.addItemElement(scrollObject, x, y, width, height, textureOrDraw, isVisible, tooltip, onClick)
+    if not scrollObject or not scrollObject.items then return end
+
+    if not scrollObject.itemElements then
+        scrollObject.itemElements = {}
+
+        local function restoreTooltip(item)
+            if not item or not item.origTooltipSaved then return end
+
+            item.tooltip = item.origTooltip
+            item.origTooltip = nil
+            item.origTooltipSaved = nil
+        end
+
+        local function updateTooltip(slf)
+            local item = slf.items[slf.mouseoverselected]
+
+            -- Восстанавливаем предыдущую строку при переходе на другую.
+            if slf.tooltipItem ~= item then
+                restoreTooltip(slf.tooltipItem)
+                slf.tooltipItem = item
+            end
+
+            if not item then return end
+
+            local element = slf.mouseOverElement
+
+            if element then
+                if not item.origTooltipSaved then
+                    item.origTooltip = item.tooltip
+                    item.origTooltipSaved = true
+                end
+
+                item.tooltip = element.tooltip
+            else
+                restoreTooltip(item)
+            end
+        end
+
+        local origPrerender = scrollObject.prerender
+        scrollObject.prerender = function(slf)
+            slf.mouseOverElement = nil
+            origPrerender(slf)
+            updateTooltip(slf)
+        end
+
+        local originalDraw = scrollObject.doDrawItem
+        scrollObject.doDrawItem = function(slf, rowY, row, alt)
+            local nextY = originalDraw(slf, rowY, row, alt)
+
+            -- isVisible
+            if MLOS_ScrollExtensions.itemIsVisible(slf, rowY, row) then
+                local mouseX = slf:getMouseX()
+                local mouseY = slf:getMouseY()
+
+                for i=1, #slf.itemElements do
+                    local element = slf.itemElements[i]
+                    local should_draw = element.isVisibleFunc and element.isVisibleFunc(row) or element.isVisible
+                    if should_draw then
+                        if element.drawFunc then
+                            element.drawFunc(slf, row, element.x, rowY + element.y, element.width, element.height)
+                        else
+                            slf:drawTextureScaled(element.draw, element.x, rowY + element.y, element.width, element.height, 1, 1, 1, 1 )
+                        end
+
+                        if slf.mouseoverselected == row.index and utils.pointInRectCoords(mouseX, mouseY, element.x, rowY + element.y, element.width, element.height) and slf.mouseOverElement ~= element then
+                            slf.mouseOverElement = element
+                        end
+                    end
+                end
+            end
+
+            return nextY
+        end
+
+        local originalMouseDown = scrollObject.onMouseDown
+        scrollObject.onMouseDown = function(slf, mx, my)
+            if slf.mouseOverElement and slf.mouseOverElement.onClick then
+                slf.mouseOverElement.onClick(slf, mx, my)
+                return true
+            end
+
+            if originalMouseDown then return originalMouseDown(slf, mx, my) end
+        end
+    end
+
+    local drawFunc = type(textureOrDraw) == "function" and textureOrDraw or nil
+    local isVisibleFunc = type(isVisible) == "function" and isVisible or nil
+    local element = {
+        x = x,
+        y = y,
+        width = width,
+        height = height,
+        draw = drawFunc == nil and textureOrDraw or nil,
+        drawFunc = drawFunc,
+        isVisible = isVisibleFunc == nil and isVisible or nil,
+        isVisibleFunc = isVisibleFunc,
+        tooltip = tooltip,
+        onClick = onClick
+    }
+
+    scrollObject.itemElements[#scrollObject.itemElements + 1] = element
+    return element
+end
+-- #endregion
 
 
 return MLOS_ScrollExtensions
