@@ -20,12 +20,12 @@ function MLOS_ContextMenu:new(x, y, titleLeft)
     return o
 end
 
-function MLOS_ContextMenu:addOption(title, tooltip, target, onSelect, ...)
+function MLOS_ContextMenu:addOption(title, tooltip, target, onClick, ...)
     local opt = {
         title = title,
         tooltip = tooltip,
         target = target,
-        onSelect = onSelect,
+        onClick = onClick,
         args = { ... }
     }
     table.insert(self.options, opt)
@@ -76,8 +76,8 @@ end
 -- #region Mouse Button Events
 function MLOS_ContextMenu:onButtonClick(button)
     local opt = button.optData
-    if opt and opt.onSelect then
-        opt.onSelect(opt.target, unpack(opt.args))
+    if opt and opt.onClick then
+        opt.onClick(opt.target, unpack(opt.args))
     end
 
     self:close()

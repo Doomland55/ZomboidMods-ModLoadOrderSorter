@@ -1,10 +1,10 @@
 {
     "UI_MLOS_Editor_Discard": "Discard unsaved sorting rule changes?",
-    "UI_MLOS_Editor_Badge_R": "R — required mods: %1",
-    "UI_MLOS_Editor_Badge_D": "D — dependent mods: %1",
-    "UI_MLOS_Editor_Badge_A": "A — load after: %1",
-    "UI_MLOS_Editor_Badge_B": "B — load before: %1",
-    "UI_MLOS_Editor_Badge_I": "I — incompatible mods: %1",
+    "UI_MLOS_Editor_Badge_require": "Required mods: %1",
+    "UI_MLOS_Editor_Badge_requiredBy": "Dependent mods: %1",
+    "UI_MLOS_Editor_Badge_loadAfter": "Load after: %1",
+    "UI_MLOS_Editor_Badge_loadBefore": "Load before: %1",
+    "UI_MLOS_Editor_Badge_incompatibleMods": "Incompatible mods: %1",
 
     "UI_MLOS_Editor_Simulate": "Simulate",
     "UI_MLOS_Editor_ClickHint": "Click a mod to add / remove",

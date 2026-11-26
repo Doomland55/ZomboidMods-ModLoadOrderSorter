@@ -38,8 +38,8 @@ end
 
 
 function Refr_Utils.pointInRectCoords(px, py, rx, ry, rw, rh)
-	return px >= rx and px <= rx + rw and
-		   py >= ry and py <= ry + rh
+	return px > rx and px < rx + rw and
+		   py > ry and py < ry + rh
 end
 
 function Refr_Utils.pointInRect(x, y, rect)

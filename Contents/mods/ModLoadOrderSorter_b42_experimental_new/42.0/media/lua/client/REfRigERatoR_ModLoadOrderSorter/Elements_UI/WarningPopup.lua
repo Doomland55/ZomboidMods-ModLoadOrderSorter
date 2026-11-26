@@ -131,7 +131,7 @@ function ModSortWarningPopup:createChildren()
         Clipboard.setClipboard(res)
         if self.parent then self.parent.copiedFlash = 90 end
     end)
-    scrollExt:addItemContextMenu(self.listBox, "Clear", nil, function(slf) self:clearWarnings() end)
+    scrollExt:addItemContextMenu(self.listBox, "Clear", nil, function() self:clearWarnings() end )
 end
 
 -- Добавление предупреждения: ВСЕ вычисления происходят ровно 1 раз здесь!

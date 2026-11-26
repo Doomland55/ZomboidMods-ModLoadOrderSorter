@@ -739,24 +739,24 @@ local function initialiseItemContextMenu(scrollObject)
     scrollObject.onRightMouseUp = function(slf, x, y)
         if origOnRightMouseUp then origOnRightMouseUp(slf, x, y) end
 
-        local row = slf:rowAt(x, y)
+        local clickedRow = slf:rowAt(x, y)
         local itemsCount = slf.items and #slf.items or 0
-        if not row or row < 1 or row > itemsCount then return end
+        if not clickedRow or clickedRow < 1 or clickedRow > itemsCount then return end
 
         local selectedDict = getSelectedItemsDict(slf)
-        if not selectedDict[row] then
-            applySelection(slf, { [row] = true })
+        if not selectedDict[clickedRow] then
+            applySelection(slf, { [clickedRow] = true })
         end
 
         local selectedIndexes = getSelectedItemsFlat(slf)
-        local selectedRawItems = {}
-        for _, idx in ipairs(selectedIndexes) do
-            local itemData = slf.items[idx]
+        local allSelectedItems = {}
+        for i=1, #selectedIndexes do
+            local itemData = slf.items[selectedIndexes[i]]
             if itemData then
-                table.insert(selectedRawItems, itemData.item or itemData)
+                table.insert(allSelectedItems, itemData.item or itemData)
             end
         end
-        local clickedRawItem = slf.items[row].item or slf.items[row]
+        local clickedItem = slf.items[clickedRow].item or slf.items[clickedRow]
 
         if slf.MLOS_activeContextMenu and slf.MLOS_activeContextMenu:isReallyVisible() then
             slf.MLOS_activeContextMenu:close()
@@ -770,34 +770,36 @@ local function initialiseItemContextMenu(scrollObject)
         slf.MLOS_activeContextMenu = context
 
         for _, entry in ipairs(slf.MLOS_ItemContextMenu) do
-            local isEnabled = true
-            if entry.enabled ~= nil then
-                if type(entry.enabled) == "function" then
-                    isEnabled = entry.enabled(selectedRawItems, clickedRawItem, entry.arguments)
-                else
-                    isEnabled = entry.enabled
-                end
+            local cacheData = nil
+            if entry.cacheFunc ~= nil then
+                cacheData = entry.cacheFunc(slf, clickedItem, clickedRow, allSelectedItems)
+            end
+
+            local isEnabled = entry.enabled
+            if type(isEnabled) == "function" then
+                isEnabled = isEnabled(slf, clickedItem, clickedRow, allSelectedItems, cacheData)
             end
 
             local title = entry.name
             if title and type(title) == "function" then
-                title = title(selectedRawItems, clickedRawItem)
+                title = title(slf, clickedItem, clickedRow, allSelectedItems, cacheData)
             end
 
             local tooltip = entry.tooltip
             if tooltip and type(tooltip) == "function" then
-                tooltip = tooltip(selectedRawItems, clickedRawItem)
+                tooltip = tooltip(slf, clickedItem, clickedRow, allSelectedItems, cacheData)
             end
 
-            if isEnabled then
+            if isEnabled ~= false then
                 context:addOption(
                     title,
                     tooltip,
                     slf,
                     entry.menuFunction,
-                    selectedRawItems,
-                    row,
-                    clickedRawItem
+                    clickedItem,
+                    clickedRow,
+                    allSelectedItems,
+                    cacheData
                 )
             end
         end
@@ -806,11 +808,14 @@ local function initialiseItemContextMenu(scrollObject)
     end
 end
 
---- menuFunc(target, selectedRawItems, row, clickedRawItem)
---- selectedRawItems - list of mod.item (it means it has fields: .modId, .modInfo, .name, .icon )
---- row - index of clicked item (int)
---- clickedRawItem - same as modList[row]
-function MLOS_ScrollExtensions:addItemContextMenu(scrollObject, menuName, tooltip, menuFunc, enabledFunc)
+--- add context menu element for RMB click
+---@param scrollObject any
+---@param menuName string|function - menu name or function with arguments: menuName(scrollObject, clickedItem, clickedRow, allSelectedItems, cachedData) 
+---@param tooltip string|function|nil - menu tooltip or function with arguments: tooltip(scrollObject, clickedItem, clickedRow, allSelectedItems, cachedData) 
+---@param menuFunc function|nil - function onClick. Arguments: menuFunc(scrollObject, clickedItem, clickedRow, allSelectedItems, cachedData) 
+---@param enabledFunc function|nil - difine when this context menu should be enabled or disabled. Argumentrs: enabledFunc(scrollObject, clickedItem, clickedRow, allSelectedItems, cachedData)
+---@param cacheFunc function|nil - function saves cache to use it in functions: menuName(), tooltip(), menuFunc() and enabledFunc(). Arguments:  cacheFunc(scrollObject, clickedItem, clickedRow, allSelectedItems)
+function MLOS_ScrollExtensions:addItemContextMenu(scrollObject, menuName, tooltip, menuFunc, enabledFunc, cacheFunc)
     if not scrollObject or not scrollObject.items then return end
 
     initialiseItemContextMenu(scrollObject)
@@ -819,7 +824,8 @@ function MLOS_ScrollExtensions:addItemContextMenu(scrollObject, menuName, toolti
         name = menuName,
         tooltip = tooltip,
         menuFunction = menuFunc,
-        enabled = enabledFunc
+        enabled = enabledFunc,
+        cacheFunc = cacheFunc
     }
 end
 
@@ -897,8 +903,8 @@ end
 
 
 function MLOS_ScrollExtensions.itemIsVisible(scrollObject, y, item)
-    if y == 0 then scrollObject._curScrollY = scrollObject:getYScroll() end
-    if utils.rectInRectCoords(0, y + scrollObject._curScrollY, scrollObject.width, item.height, 0, 0 , scrollObject.width, scrollObject.height) then
+    local yscroll = scrollObject:getYScroll()
+    if utils.rectInRectCoords(0, y + yscroll, scrollObject.width, item.height, 0, 0 , scrollObject.width, scrollObject.height) then
         return true
     end
     return false
@@ -906,42 +912,45 @@ end
 
 
 -- #region addItemElement
-function MLOS_ScrollExtensions.addItemElement(scrollObject, x, y, width, height, textureOrDraw, isVisible, tooltip, onClick)
-    if not scrollObject or not scrollObject.items then return end
+
+---comment
+---@param scrollObject any
+---@param x number offset by X. can be negative to allign from right side
+---@param y number offset by Y
+---@param width number width of element
+---@param height number height of element
+---@param textureOrDraw Texture|function Texture or function to draw with args (slf, item, localx, rowY, element)
+---@param isVisible boolean|function|nil bool or function
+---@param tooltip string|function|nil string with element description. Can by function with args (slf, row, element)
+---@param onClick function|nil function optional
+---@param customMouseOverElement boolean|nil 
+---@return table|nil
+function MLOS_ScrollExtensions.addItemElement(scrollObject, x, y, width, height, textureOrDraw, isVisible, tooltip, onClick, customMouseOverElement)
+    if not scrollObject or not scrollObject.items then return nil end
 
     if not scrollObject.itemElements then
         scrollObject.itemElements = {}
 
-        local function restoreTooltip(item)
-            if not item or not item.origTooltipSaved then return end
-
-            item.tooltip = item.origTooltip
-            item.origTooltip = nil
-            item.origTooltipSaved = nil
+        local function restoreTooltip(slf, item)
+            if slf.tooltipItem ~= item then
+                if slf.tooltipItem then slf.tooltipItem.tooltip = slf.tooltipItem.origTooltip or nil end
+                slf.tooltipItem = item
+            end
         end
 
         local function updateTooltip(slf)
-            local item = slf.items[slf.mouseoverselected]
+            local element = slf.mouseOverElement
+            if not element then restoreTooltip(slf, nil) return end
 
-            -- Восстанавливаем предыдущую строку при переходе на другую.
-            if slf.tooltipItem ~= item then
-                restoreTooltip(slf.tooltipItem)
-                slf.tooltipItem = item
+            local item = slf.items[element.index]
+            restoreTooltip(slf, item)
+
+            if item.origTooltip == nil then
+                item.origTooltip = item.tooltip or false
             end
 
-            if not item then return end
-
-            local element = slf.mouseOverElement
-
-            if element then
-                if not item.origTooltipSaved then
-                    item.origTooltip = item.tooltip
-                    item.origTooltipSaved = true
-                end
-
+            if item.tooltip ~= element.tooltip then
                 item.tooltip = element.tooltip
-            else
-                restoreTooltip(item)
             end
         end
 
@@ -963,16 +972,26 @@ function MLOS_ScrollExtensions.addItemElement(scrollObject, x, y, width, height,
 
                 for i=1, #slf.itemElements do
                     local element = slf.itemElements[i]
-                    local should_draw = element.isVisibleFunc and element.isVisibleFunc(row) or element.isVisible
+                    local should_draw = element.isVisible ~= false
+                    if element.isVisibleFunc then should_draw = element.isVisibleFunc(row) end
                     if should_draw then
+                        local localx = element.x
+                        if localx < 0 then localx = slf.width + localx - (slf:isVScrollBarVisible() and 17 or 0) end
+
                         if element.drawFunc then
-                            element.drawFunc(slf, row, element.x, rowY + element.y, element.width, element.height)
+                            element.drawFunc(slf, row, localx, rowY, element)
                         else
-                            slf:drawTextureScaled(element.draw, element.x, rowY + element.y, element.width, element.height, 1, 1, 1, 1 )
+                            slf:drawTextureScaled(element.draw, localx, rowY + element.y, element.width, element.height, 1, 1, 1, 1 )
                         end
 
-                        if slf.mouseoverselected == row.index and utils.pointInRectCoords(mouseX, mouseY, element.x, rowY + element.y, element.width, element.height) and slf.mouseOverElement ~= element then
-                            slf.mouseOverElement = element
+                        if customMouseOverElement ~= true then
+                            if slf.mouseoverselected == row.index and utils.pointInRectCoords(mouseX, mouseY, localx, rowY + element.y, element.width, element.height) then
+                                if element.index ~= row.index then
+                                    element.index = row.index
+                                    if element.tooltipFunc then element.tooltip = element.tooltipFunc(slf, row, element) end
+                                end
+                                slf.mouseOverElement = element
+                            end
                         end
                     end
                 end
@@ -994,6 +1013,7 @@ function MLOS_ScrollExtensions.addItemElement(scrollObject, x, y, width, height,
 
     local drawFunc = type(textureOrDraw) == "function" and textureOrDraw or nil
     local isVisibleFunc = type(isVisible) == "function" and isVisible or nil
+    local tooltipFunc = type(tooltip) == "function" and tooltip or nil
     local element = {
         x = x,
         y = y,
@@ -1001,9 +1021,10 @@ function MLOS_ScrollExtensions.addItemElement(scrollObject, x, y, width, height,
         height = height,
         draw = drawFunc == nil and textureOrDraw or nil,
         drawFunc = drawFunc,
-        isVisible = isVisibleFunc == nil and isVisible or nil,
+        isVisible = isVisibleFunc == nil and isVisible ~= false,
         isVisibleFunc = isVisibleFunc,
-        tooltip = tooltip,
+        tooltip = tooltipFunc == nil and tooltip or nil,
+        tooltipFunc = tooltipFunc,
         onClick = onClick
     }
 
