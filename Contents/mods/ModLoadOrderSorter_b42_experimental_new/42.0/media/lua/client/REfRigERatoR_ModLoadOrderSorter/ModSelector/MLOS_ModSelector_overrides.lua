@@ -1,4 +1,3 @@
----
 ---	This mod updates the behavior of automatic sorting, added to the Project Zomboid build 42.0. 
 --- Adds own topological sorting algorithm for mods load order, 
 --- and adds support for sorting rules from the file sorting_rules.txt.
@@ -33,32 +32,10 @@ local BUTTON_HGT = math.max(25, FONT_HGT_SMALL + 3 * 2)
 local PADDING = 10
 
 local ModLoadOrderPanelOverride = ModSelector.ModLoadOrderPanel
-
-
 local origCreateChildren = ModLoadOrderPanelOverride.createChildren
--- local origInstantiate = ModLoadOrderPanelOverride.instantiate
 
 
 -- #region ================ FIXES =================
--- function ModLoadOrderPanelOverride:fixMissingModsCrash()
---     local modArray = self.model:getActiveMods():getMods():clone()
---     local missedMods = {}
-
---     for i = 0, modArray:size()-1 do
---         local modId = modArray:get(i)
---         if modId ~= nil and not self.model.mods[modId] then
---             self.model:setModActive(modId, false)
---             table.insert(missedMods, modId)
---         end
---     end
-
---     if not utils:tableIsEmpty(missedMods) and self.warningPopup then
---         self.warningPopup:addWarning("Mods not found",  "Mods: [" .. table.concat(missedMods, ', ') .. "] were not found. They will be disabled to prevent the game from crashing.")
---         -- pcall(function(missedMods) error("\n[WARNING] --> [MLOS] Mods: [" .. table.concat(missedMods, ', ') .. "] were not found. They will be disabled to prevent the game from crashing.\n") end, missedMods)
---     end
--- end
-
-
 function ModLoadOrderPanelOverride:fixBackButtonJoypadFocus()
     local fixedBackFunc = function(slf, button, x, y)
         if button.internal == "BACK" then
@@ -100,24 +77,24 @@ end
 
 -- Layer progress is aggregated by the manager; no UI knowledge of individual
 -- layer APIs is required when another layer is registered.
-local function showLayerProgress(panel, status)
-    if not panel.MLOS_ProgressBar then return end
-    panel.MLOS_ProgressBar:setVisible(not status.completed)
-    panel.MLOS_ProgressBar:setProgress(status.total > 0 and status.progress / status.total or 1)
-    local active = {}
-    for _, layer in ipairs(status.layers) do
-        if layer.status == "running" then
-            local text = layer.name
-            if layer.progress.total > 0 then
-                text = text .. " " .. layer.progress.current .. "/" .. layer.progress.total
-            end
-            active[#active + 1] = text
-        end
-    end
-    local title = getText("UI_MLOS_Layers_Progress", status.finished, status.total)
-    if #active > 0 then title = title .. " | " .. table.concat(active, ", ") end
-    panel.MLOS_ProgressBar:setText(title)
-end
+-- local function showLayerProgress(panel, status)
+--     if not panel.MLOS_ProgressBar then return end
+--     panel.MLOS_ProgressBar:setVisible(not status.completed)
+--     panel.MLOS_ProgressBar:setProgress(status.total > 0 and status.progress / status.total or 1)
+--     local active = {}
+--     for _, layer in ipairs(status.layers) do
+--         if layer.status == "running" then
+--             local text = layer.name
+--             if layer.progress.total > 0 then
+--                 text = text .. " " .. layer.progress.current .. "/" .. layer.progress.total
+--             end
+--             active[#active + 1] = text
+--         end
+--     end
+--     local title = getText("UI_MLOS_Layers_Progress", status.finished, status.total)
+--     if #active > 0 then title = title .. " | " .. table.concat(active, ", ") end
+--     panel.MLOS_ProgressBar:setText(title)
+-- end
 
 local function UpdateLayers(self)
     core.layersManager:initialise(self.modList.items, {
@@ -132,7 +109,7 @@ end
 
 
 function ModLoadOrderPanelOverride:fillModListWithActiveMods(modArray)
-    modArray = modArray or self.model:getActiveMods():getMods()
+    modArray = modArray or self.model:getActiveMods():getMods():clone()
     local missedMods = {}
 
     self.modList:clear()
@@ -218,11 +195,6 @@ end
 
 
 local function onRulesEditorButton(self, button)
-    -- if not core.layersManager:isSuccessful() then
-    --     if self.warningPopup then self.warningPopup:addWarning(getText("UI_MLOS_Layers_NotReady"), getText("UI_MLOS_Layers_NotReady_Msg"), "Layers") end
-    --     return
-    -- end
-
     local editor = srEditor:new(self.x, self.y, self.width, self.height, self)
     editor:initialise()
     editor:instantiate()
@@ -335,28 +307,25 @@ function ModLoadOrderPanelOverride:createChildren()
     self.conflictFilter:addOption(tickBoxText)
     self:addChild(self.conflictFilter)
 
-    -- FIXES --
-    self:fixBackButtonJoypadFocus()
-
     -- CONTEXT MENU ITEMS --
-    scrollExt:addContextMenuOption(contextMenuBtn, "Re-scan files", "Rebuild the file analysis cache", function(panel)
-        core.layersManager:initialise(panel.modList.items, {
-            reread = true,
-            onProgress = function(status) showLayerProgress(panel, status) end,
-            onComplete = function()
-                panel.MLOS_ProgressBar:setVisible(false); panel:MLOS_refresh(); panel:showLayerWarnings()
-            end
-        })
-    end)
+    -- scrollExt:addContextMenuOption(contextMenuBtn, "Re-scan files", "Rebuild the file analysis cache", function(panel)
+    --     core.layersManager:initialise(panel.modList.items, {
+    --         reread = true,
+    --         onProgress = function(status) showLayerProgress(panel, status) end,
+    --         onComplete = function()
+    --             panel.MLOS_ProgressBar:setVisible(false); panel:MLOS_refresh(); panel:showLayerWarnings()
+    --         end
+    --     })
+    -- end)
 
-    scrollExt:addItemContextMenu(self.modList,     
-        function(sri, _) return "Disable (" .. tostring(#sri) .. ")" end,
-        function(sri, _)
-            return "Disable mod(s) (" .. tostring(#sri) .. ")" -- TODO + requiredBy for each. change tooltip to warning about required by mods will be disabled too
+    scrollExt:addItemContextMenu(self.modList,
+        function(_, _, _, allSelectedItems) return "Disable (" .. tostring(#allSelectedItems) .. ")" end,
+        function(_, _, _, allSelectedItems)
+            return "Disable mod(s) (" .. tostring(#allSelectedItems) .. ")" -- TODO + requiredBy for each. change tooltip to warning about required by mods will be disabled too
         end,
-        function(slf, sri, _, _)
-            for i=1, #sri do
-                self.model:forceActivateMods(sri[i].modInfo, false)
+        function(slf, _, _, allSelectedItems)
+            for i=1, #allSelectedItems do
+                self.model:forceActivateMods(allSelectedItems[i].modInfo, false)
             end
             self.model:refreshMods()
             self:fillModListWithActiveMods()
@@ -367,98 +336,100 @@ function ModLoadOrderPanelOverride:createChildren()
     -- self.fileTooltip = ISToolTip:new(); self.fileTooltip:setOwner(self)
     -- self.fileTooltip:setVisible(false); self.fileTooltip:setAlwaysOnTop(true); self.fileTooltip.followMouse = true
 
-
+    
+    -- FIXES --
+    self:fixBackButtonJoypadFocus()
 end
 
 -- Validation and inspector are shared between mouse selection, drag/reorder,
 -- completed analysis and editor saves. The signature avoids rebuilding every frame.
-function ModLoadOrderPanelOverride:MLOS_updateView()
-    if not self.modList or not self.filesList or not core.layers.modInfo then return end
-    local parts = {}
-    for _, row in ipairs(self.modList.items) do parts[#parts+1] = row.item.modId end
-    for index in pairs(self.modList.selected_map or {}) do parts[#parts+1] = "@" .. index end
-    parts[#parts+1] = tostring(self.modList.selected)
-    local signature = table.concat(parts, "|")
-    if signature ~= self.MLOS_viewSignature then self.MLOS_viewSignature = signature; self:MLOS_refresh() end
-    local list = self.filesList
-    local row = list:isMouseOver() and list.items[list.mouseoverselected or -1] or nil
-    if row then
-        self.fileTooltip.name = row.text
-        self.fileTooltip.description = table.concat(row.item.details, " <LINE> ")
-        if not self.fileTooltip:getIsVisible() then self.fileTooltip:addToUIManager(); self.fileTooltip:setVisible(true) end
-    elseif self.fileTooltip:getIsVisible() then
-        self.fileTooltip:setVisible(false); self.fileTooltip:removeFromUIManager()
-    end
-end
+-- function ModLoadOrderPanelOverride:MLOS_updateView()
+--     if not self.modList or not self.filesList or not core.layers.modInfo then return end
+--     local parts = {}
+--     for _, row in ipairs(self.modList.items) do parts[#parts+1] = row.item.modId end
+--     for index in pairs(self.modList.selected_map or {}) do parts[#parts+1] = "@" .. index end
+--     parts[#parts+1] = tostring(self.modList.selected)
+--     local signature = table.concat(parts, "|")
+--     if signature ~= self.MLOS_viewSignature then self.MLOS_viewSignature = signature; self:MLOS_refresh() end
+--     local list = self.filesList
+--     local row = list:isMouseOver() and list.items[list.mouseoverselected or -1] or nil
+--     if row then
+--         self.fileTooltip.name = row.text
+--         self.fileTooltip.description = table.concat(row.item.details, " <LINE> ")
+--         if not self.fileTooltip:getIsVisible() then self.fileTooltip:addToUIManager(); self.fileTooltip:setVisible(true) end
+--     elseif self.fileTooltip:getIsVisible() then
+--         self.fileTooltip:setVisible(false); self.fileTooltip:removeFromUIManager()
+--     end
+-- end
 
 
-function ModLoadOrderPanelOverride:MLOS_refresh()
-    if not self.filesList or not core.layers.modInfo then return end
-    local status = sortingCore:validate(self.modList.items)
-    local colors = core.COLORS
-    for i, row in ipairs(self.modList.items) do
-        row.itemindex = i
-        local color = colors[status[row.item.modId]] or colors.reset
-        row.color = {r=color.r, g=color.g, b=color.b}
-    end
-    local data = core.layers.modFiles and core.layers.modFiles.data or {}
-    local files, targets = {}, {}
-    for id, mod in pairs(data) do
-        for _, file in ipairs(mod.files or {}) do
-            files[file] = files[file] or {}; files[file][id] = true
-        end
-        for _, m in ipairs(mod.modifications or {}) do
-            local target = (m.className or '') .. '.' .. (m.methodName or '')
-            targets[target] = targets[target] or {}; targets[target][id] = true
-        end
-    end
-    local function count(set) local n=0; for _ in pairs(set or {}) do n=n+1 end; return n end
-    local selected = self.modList.selected_map or {}
-    if utils:tableIsEmpty(selected) and self.modList.selected and self.modList.selected > 0 then
-        selected = {[self.modList.selected] = true}
-    end
-    local union = {}
-    for i in pairs(selected) do
-        local row = self.modList.items[i]
-        local id = row and row.item.modId
-        local mod = id and data[id]
-        if mod then
-            for _, file in ipairs(mod.files or {}) do
-                local entry = union[file] or {details={}, conflict=count(files[file]) > 1, seen={}}
-                union[file] = entry
-                if not entry.seen[id] then
-                    entry.seen[id] = true
-                    local owners = {}; for owner in pairs(files[file] or {}) do owners[#owners+1] = owner end
-                    table.sort(owners)
-                    entry.details[#entry.details+1] = "File: " .. table.concat(owners, ", ")
-                end
-            end
-            for _, m in ipairs(mod.modifications or {}) do
-                local entry = union[m.file]
-                if entry then
-                    local target = (m.className or '') .. '.' .. (m.methodName or '')
-                    entry.details[#entry.details+1] = id .. ': ' .. (m.fullTarget or target)
-                    if count(targets[target]) > 1 then
-                        entry.conflict = true
-                        local owners = {}; for owner in pairs(targets[target]) do owners[#owners+1] = owner end
-                        table.sort(owners)
-                        entry.details[#entry.details+1] = target .. " : " .. table.concat(owners, ", ")
-                    end
-                end
-            end
-        end
-    end
-    local folders = self.filesList.MLOS_folders
-    if folders then folders:beginUpdate() end
-    self.filesList:clear()
-    self.filesList.foundItems = {}; self.filesList.foundIndex = 0
-    local names = {}; for name in pairs(union) do names[#names+1] = name end; table.sort(names)
-    local only = self.conflictFilter:isSelected(1)
-    for _, name in ipairs(names) do
-        if not only or union[name].conflict then
-            union[name].name = name; union[name].modId = name
-            self.filesList:addItem(name, union[name])
-        end
-    end
-    if folders then folders:endUpdate() end
-end
+-- function ModLoadOrderPanelOverride:MLOS_refresh()
+--     if not self.filesList or not core.layers.modInfo then return end
+--     local status = sortingCore:validate(self.modList.items)
+--     local colors = core.COLORS
+--     for i, row in ipairs(self.modList.items) do
+--         row.itemindex = i
+--         local color = colors[status[row.item.modId]] or colors.reset
+--         row.color = {r=color.r, g=color.g, b=color.b}
+--     end
+--     local data = core.layers.modFiles and core.layers.modFiles.data or {}
+--     local files, targets = {}, {}
+--     for id, mod in pairs(data) do
+--         for _, file in ipairs(mod.files or {}) do
+--             files[file] = files[file] or {}; files[file][id] = true
+--         end
+--         for _, m in ipairs(mod.modifications or {}) do
+--             local target = (m.className or '') .. '.' .. (m.methodName or '')
+--             targets[target] = targets[target] or {}; targets[target][id] = true
+--         end
+--     end
+--     local function count(set) local n=0; for _ in pairs(set or {}) do n=n+1 end; return n end
+--     local selected = self.modList.selected_map or {}
+--     if utils:tableIsEmpty(selected) and self.modList.selected and self.modList.selected > 0 then
+--         selected = {[self.modList.selected] = true}
+--     end
+--     local union = {}
+--     for i in pairs(selected) do
+--         local row = self.modList.items[i]
+--         local id = row and row.item.modId
+--         local mod = id and data[id]
+--         if mod then
+--             for _, file in ipairs(mod.files or {}) do
+--                 local entry = union[file] or {details={}, conflict=count(files[file]) > 1, seen={}}
+--                 union[file] = entry
+--                 if not entry.seen[id] then
+--                     entry.seen[id] = true
+--                     local owners = {}; for owner in pairs(files[file] or {}) do owners[#owners+1] = owner end
+--                     table.sort(owners)
+--                     entry.details[#entry.details+1] = "File: " .. table.concat(owners, ", ")
+--                 end
+--             end
+--             for _, m in ipairs(mod.modifications or {}) do
+--                 local entry = union[m.file]
+--                 if entry then
+--                     local target = (m.className or '') .. '.' .. (m.methodName or '')
+--                     entry.details[#entry.details+1] = id .. ': ' .. (m.fullTarget or target)
+--                     if count(targets[target]) > 1 then
+--                         entry.conflict = true
+--                         local owners = {}; for owner in pairs(targets[target]) do owners[#owners+1] = owner end
+--                         table.sort(owners)
+--                         entry.details[#entry.details+1] = target .. " : " .. table.concat(owners, ", ")
+--                     end
+--                 end
+--             end
+--         end
+--     end
+--     local folders = self.filesList.MLOS_folders
+--     if folders then folders:beginUpdate() end
+--     self.filesList:clear()
+--     self.filesList.foundItems = {}; self.filesList.foundIndex = 0
+--     local names = {}; for name in pairs(union) do names[#names+1] = name end; table.sort(names)
+--     local only = self.conflictFilter:isSelected(1)
+--     for _, name in ipairs(names) do
+--         if not only or union[name].conflict then
+--             union[name].name = name; union[name].modId = name
+--             self.filesList:addItem(name, union[name])
+--         end
+--     end
+--     if folders then folders:endUpdate() end
+-- end
