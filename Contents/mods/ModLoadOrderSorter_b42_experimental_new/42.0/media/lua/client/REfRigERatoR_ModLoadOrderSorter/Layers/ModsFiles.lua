@@ -323,19 +323,27 @@ local function needsScan(cached, updatedTime, now)
     return age < 0 or age > MAX_CACHE_AGE
 end
 
---- Scan accessible files. A loaded-file snapshot is necessarily incomplete:
---- it cannot prove that all of a mod's Lua files were loaded in this session.
-local function scanLoaded(item, loadedPaths)
+-- isModActive checks the game's loaded mod IDs, not the UI's current selection.
+local function isLoadedInSession(item)
+    if type(isModActive) ~= "function" then return false end
+    local ok, loaded = pcall(isModActive, item.modInfo)
+    return ok and loaded == true
+end
+
+--- A loaded-file snapshot may omit shadowed or unexecuted files, so it is not
+--- marked complete, even if the mod itself is loaded in the current session.
+local function scanLoaded(item, loadedPaths, isLoaded)
+    if not isLoaded then return nil end
     local modInfo = item.modInfo
     local dir = modInfo:getDir()
-    local files = dir and listLoadedModFiles(item.modId, dir, modInfo, loadedPaths) or {}
-    if #files == 0 then return nil end
+    if not dir or dir == "" then return nil end
+    local files = listLoadedModFiles(item.modId, dir, modInfo, loadedPaths)
     local changes, failed = parseFiles(item.modId, files)
     if failed then return nil end
     return { rootDir = dir, files = files, modifications = changes, complete = false }
 end
 
-function MLOS_ModsFiles:scanMod(item, loadedPaths, useBuddy)
+function MLOS_ModsFiles:scanMod(item, loadedPaths, useBuddy, isLoaded)
     if useBuddy then
         local files = listBuddyLuaFiles(item)
         if files then
@@ -346,7 +354,7 @@ function MLOS_ModsFiles:scanMod(item, loadedPaths, useBuddy)
         end
         print("[MLOS] ZombieBuddy scan failed for " .. tostring(item.modId) .. "; using loaded files")
     end
-    return scanLoaded(item, loadedPaths)
+    return scanLoaded(item, loadedPaths, isLoaded)
 end
 
 --================================================
@@ -387,13 +395,14 @@ function MLOS_ModsFiles:load(modList, reread)
         local item = row.item
         if item and item.modId and item.modInfo then
             local id = item.modId
+            local isLoaded = isLoadedInSession(item)
             local cached = self.cache[id]
             local wid = workshopId(item)
             local updatedTime = wid and self.workshopTimes[wid] or nil
             local result = cached
             if needsScan(cached, updatedTime, now) or (useBuddy and cached and not cached.complete) then
                 if not loadedPaths then loadedPaths = getLoadedLuaPaths() end
-                local scanned = self:scanMod(item, loadedPaths, useBuddy)
+                local scanned = self:scanMod(item, loadedPaths, useBuddy, isLoaded)
                 if scanned and cached and cached.complete and not scanned.complete then
                     -- Do not replace a complete snapshot with a partial one.
                     scanned = nil
@@ -412,7 +421,7 @@ function MLOS_ModsFiles:load(modList, reread)
             end
             if result then
                 data[id] = result
-                if not result.complete and notLoaded[#notLoaded] ~= id then
+                if not result.complete and not isLoaded and notLoaded[#notLoaded] ~= id then
                     notLoaded[#notLoaded + 1] = id
                 end
             end
@@ -436,7 +445,7 @@ function MLOS_ModsFiles:getWarnings()
     } }
 end
 
----@return boolean true if the analysis of some enabled mods is incomplete in this Lua session
+---@return boolean true if a selected mod is not loaded or analysis failed
 function MLOS_ModsFiles:hasNotLoadedMods()
     return not utils:tableIsEmpty(self.notLoaded)
 end

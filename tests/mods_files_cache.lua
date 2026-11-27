@@ -53,6 +53,8 @@ package.loaded[prefix .. 'Core/CorutineManager.lua'] = cm
 package.loaded[prefix .. 'Layers/ModsFilesParser'] = parser
 function cacheFileExists(path) return files[path] ~= nil end
 function getTimestamp() return now end
+local loadedMods = { A = true, B = true }
+function isModActive(info) return loadedMods[info.id] == true end
 function getLoadedLuaCount() return 2 end
 function getLoadedLua(i) return ({'/mods/A/media/lua/client/a.lua', '/mods/B/media/lua/client/b.lua'})[i+1] end
 function getModFileReader() return { close = function() end } end
@@ -76,7 +78,7 @@ function querySteamWorkshopItemDetails(ids, callback, arg)
     end
 end
 local function row(id, workshop)
-    local info = {}
+    local info = { id = id }
     function info:getWorkshopID() return workshop end
     function info:getDir() return '/mods/' .. id end
     function info:getVersionDir() return '/mods/' .. id end
@@ -90,7 +92,8 @@ steam.intermediate = true
 layer:load({a,b})
 assert(scanCount == 2 and #activeQueries == 1 and activeQueries[1] == '123')
 assert(layer.cache.A.updatedTime == 100 and layer.cache.B.lastAnalyzedTime == now)
-assert(layer.cache.A.complete == false and #layer.notLoaded == 2)
+assert(layer.cache.A.complete == false and #layer.notLoaded == 0,
+    'loaded mods should not warn just because their snapshot is partial')
 layer:load({a,b}); assert(scanCount == 2, 'fresh cache must not be scanned')
 steam['123'] = 101
 layer:load({a}); assert(scanCount == 3 and layer.cache.A.updatedTime == 101)
@@ -143,3 +146,24 @@ now = now + 86401
 function MLOS_listModFiles() return nil end
 layer:load({c}); assert(layer.cache.C.complete and #layer.cache.C.files == 2 and #layer.notLoaded == 1)
 print('Bridge empty/failure tests passed')
+
+-- The selected mod is not necessarily loaded in the running Lua session.
+MLOS_listModFiles = nil
+local e = row('E', nil)
+layer:load({e})
+assert(#layer.notLoaded == 1 and layer.notLoaded[1] == 'E' and not layer.cache.E)
+-- A previously cached partial snapshot still warns when the mod is not loaded.
+loadedMods.B = false
+layer.cache.B.lastAnalyzedTime = now -- fresh cache: no retry is necessary
+layer:load({b})
+assert(#layer.notLoaded == 1 and layer.notLoaded[1] == 'B')
+-- A loaded mod without executed Lua paths (e.g. assets only) is not a failure.
+local f = row('F', nil)
+loadedMods.F = true
+layer:load({f})
+assert(#layer.notLoaded == 0 and layer.cache.F and #layer.cache.F.files == 0)
+-- Fresh old partial cache entries stop generating false warnings after restart.
+loadedMods.B = true
+layer:load({b})
+assert(#layer.notLoaded == 0 and layer.cache.B.complete == false)
+print('Loaded mod warning tests passed')
