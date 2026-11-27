@@ -19,6 +19,8 @@ local ruleStyles = {
     loadAfter = { letter = "A", button = "loadAfter", color = { r = .2, g = .4, b = .9, a = .35 } },
     require = { letter = "R" },
     requiredBy = { letter = "D" },
+    changed = {letter = "*", textColor = { r = 1, g = 0, b = 0, a = 0.7 }},
+    default = {textColor = { r = 1, g = 1, b = 1, a = 1 }, color={ r = 0, g = 0, b = 0, a = .95 }}
 }
 
 local FONT_HGT_SMALL = getTextManager():getFontHeight(UIFont.Small)
@@ -35,7 +37,8 @@ function SortingRulesEditor:new(x, y, width, height, modOrderPanel)
     o.sortingRules = core.layers.SortingRules:beginEdit()  -- deepCopy of currentRules list
 
     o.editModeData = nil
-    o.modsById = {}
+    o.modsById = {} -- {modId: item}
+    o.changesList = {} -- {modId: changesDict}
     o.higlightMods = {}
 
     -- o.savedRules = utils:deepCopy(o.sortingRules)
@@ -121,6 +124,7 @@ function SortingRulesEditor:prerender()
     self:drawTextCentre(title, self.width * 0.5, PADDING * 2, 1, 1, 1, 1, UIFont.Large)
 end
 
+
 -- #region My Local functions
 local function createButton(x,y, width, height, name, target, onClick)
     local button = ISButton:new(x, y, width, height, name, target, onClick)
@@ -155,10 +159,11 @@ local function scrollDoDrawItem(self, y, item, alt)
 end
 
 local function drawIcon(slf, _, localx, localy, element, name)
-    local style = ruleStyles[name]
+    local style = ruleStyles[name] or {}
     local color = style.color
-    if color then slf:drawRect(localx, localy + element.y, element.width, element.height, 0.8, style.color.r, style.color.g, style.color.b) end
-    slf:drawTextCentre(style.letter, localx + element.width * 0.5, localy + element.y, 1, 1, 1, 1, UIFont.Small)
+    local textColor = style.textColor or ruleStyles.default.textColor
+    if color then slf:drawRect(localx, localy + element.y, element.width, element.height, 0.8, color.r, color.g, color.b) end
+    slf:drawTextCentre(style.letter, localx + element.width * 0.5, localy + element.y, textColor.r, textColor.g, textColor.b, textColor.a, UIFont.Small)
 end
 
 local function calcTooltip(label, info, ids)
@@ -181,12 +186,17 @@ local function drawRuleBadges(slf, item, localx, localy, element)
     local layer = core.layers.ModsInfo
     local info = layer and layer.data[item.item.modId] or {}
 
+    local changes = slf.parent.changesList[modId] or {}
+    local changedIds = {}; for k, _ in pairs(changes) do changedIds[#changedIds+1] = k end
+
     local namesVisibility = {
+        changed = { ids = changedIds, tooltip = "Changes"},
         require = { ids = info.requirements, tooltip = "Required mods"},
         requiredBy = { ids = info.requiredBy, tooltip = "Dependent mods"},
         incompatibleMods = { ids = modSR.incompatibleMods, tooltip = "Incompatible Mods"},
         loadBefore = { ids = modSR.loadBefore, tooltip = "LoadBefore mods"},
-        loadAfter = { ids = modSR.loadAfter, tooltip = "LoadAfter mods"}}
+        loadAfter = { ids = modSR.loadAfter, tooltip = "LoadAfter mods"},
+    }
 
     for name, data in pairs(namesVisibility) do
         if not utils:tableIsEmpty(data.ids) then
@@ -206,6 +216,10 @@ local function drawRuleBadges(slf, item, localx, localy, element)
 end
 
 -- #endregion
+
+
+
+
 
 
 -- #region Editing mode
@@ -253,50 +267,39 @@ end
 
 
 
+function SortingRulesEditor:addToChanges(modId, name, value)
+    local origData = self.sortingRules[modId] or {}
+    local changes = self.changesList[modId] or {}
 
-
-function SortingRulesEditor.onInfoListMouseDown(slf, x, y)
-    ISScrollingListBox.onMouseDown(slf, x, y)
-    local parent = slf.parent
-    if parent:inEditMode() or slf.selectedTab == "FILES_TAB" then return end
-
-    local index = slf.mouseoverselected
-    local row = index and slf.items[index]
-    if not row then return end
-    for i, mod in ipairs(parent.modsOrderList.items) do
-        if mod.item.modId == row.item.modId then
-            parent.modsOrderList.selected = i
-            parent.modsOrderList:ensureVisible(i)
-            -- self:onModClick()
-            return
-        end
-    end
+    if origData[name] ~= value then changes[name] = value
+    else changes[name] = nil end
+    self.changesList[modId] = changes
 end
 
--- function SortingRulesEditor:onModClick()
---     -- self:refreshRuleBackgrounds()
---     local selected = self.modsOrderList.items[self.modsOrderList.selected]
---     local rule = selected and self.sortingRules[selected.item.modId] or {}
---     -- Assigning selected does not invoke the change callback or modify rules.
---     -- selectComboValue(self.loadFirstComboBox, rule.loadFirst or "off")
---     -- selectComboValue(self.loadLastComboBox, rule.loadLast or "off")
---     -- selectComboValue(self.categoryComboBox, rule.category or "automatic")
 
---     self.loadFirstComboBox.enable = selected ~= nil
---     self.loadLastComboBox.enable = selected ~= nil
---     self.categoryComboBox.enable = selected ~= nil
---     self:refreshInfoList()
--- end
+function SortingRulesEditor:onComboBoxChange(combo)
+    local selected = self.modsOrderList.items[self.modsOrderList.selected]
+    if not selected then return end
+
+    local modId = selected.item.modId
+    local key = combo.internal
+    local value = combo:getOptionData(combo.selected)
+
+    self:addToChanges(modId, key, value)
+end
 
 
 function SortingRulesEditor:updateComboBoxValues(item)
     local modId = item.item.modId
     local rule = self.sortingRules[modId] or {}
+
+    local modsInfo = core.layers.ModsInfo
+    local info = modsInfo and modsInfo.data and modsInfo.data[modId] or {}
+
     self.loadFirstComboBox:selectData(rule.loadFirst or "off")
     self.loadLastComboBox:selectData(rule.loadLast or "off")
-    self.categoryComboBox:selectData(rule.category or "automatic")
+    self.categoryComboBox:selectData(rule.category or info.category or "undefined")
 end
-
 
 
 local function highlightModRules(self, modId)
@@ -304,7 +307,7 @@ local function highlightModRules(self, modId)
     local modSR = self.sortingRules[modId] or {}
 
     local namesVisibility = {
-        loadAfter = modSR.loadAfter, 
+        loadAfter = modSR.loadAfter,
         loadBefore = modSR.loadBefore,
         incompatibleMods = modSR.incompatibleMods,}
 
@@ -343,6 +346,24 @@ function SortingRulesEditor.onModsOrderMouseDown(slf, x, y)
     highlightModRules(parent, modId)
 end
 
+
+function SortingRulesEditor.onInfoListMouseDown(slf, x, y)
+    ISScrollingListBox.onMouseDown(slf, x, y)
+    local parent = slf.parent
+    if parent:inEditMode() or slf.selectedTab == "FILES_TAB" then return end
+
+    local index = slf.mouseoverselected
+    local row = index and slf.items[index]
+    if not row then return end
+    for i, mod in ipairs(parent.modsOrderList.items) do
+        if mod.item.modId == row.item.modId then
+            parent.modsOrderList.selected = i
+            parent.modsOrderList:ensureVisible(i)
+            -- self:onModClick()
+            return
+        end
+    end
+end
 
 
 
@@ -438,18 +459,18 @@ end
 
 
 
-function SortingRulesEditor:onComboBoxChange(combo)
-    local selected = self.modsOrderList.items[self.modsOrderList.selected]
-    if not selected then return end
-    local rule = self.editRule or self.sortingRules[selected.item.modId] or {}
-    if not self.editMode then self.sortingRules[selected.item.modId] = rule end
-    local key = combo == self.loadFirstComboBox and "loadFirst"
-        or combo == self.loadLastComboBox and "loadLast" or "category"
-    local value = combo:getOptionData(combo.selected)
-    if key == "category" and value == "automatic" then value = nil end
-    rule[key] = value
-    self:updateDirty(selected.item.modId)
-end
+-- function SortingRulesEditor:onComboBoxChange(combo)
+--     local selected = self.modsOrderList.items[self.modsOrderList.selected]
+--     if not selected then return end
+--     local rule = self.editRule or self.sortingRules[selected.item.modId] or {}
+--     if not self.editMode then self.sortingRules[selected.item.modId] = rule end
+--     local key = combo == self.loadFirstComboBox and "loadFirst"
+--         or combo == self.loadLastComboBox and "loadLast" or "category"
+--     local value = combo:getOptionData(combo.selected)
+--     if key == "category" and value == "automatic" then value = nil end
+--     rule[key] = value
+--     self:updateDirty(selected.item.modId)
+-- end
 
 
 function SortingRulesEditor:fillEditingList()
@@ -708,9 +729,11 @@ function SortingRulesEditor:createChildren()
     local loadLastTr = getText("UI_MLOS_SortingRules_LoadLast")
 
     self.loadFirstComboBox = ISComboBox:new(center_x, self.modeApplyBtn:getBottom() + PADDING * 2, innerWitdth * 0.2 - PADDING, BUTTON_HGT, self, self.onComboBoxChange)
+    self.loadFirstComboBox.internal = "loadFirst"
     self:addChild(self.loadFirstComboBox)
 
     self.loadLastComboBox = ISComboBox:new(center_x, self.loadFirstComboBox:getBottom() + PADDING, self.loadFirstComboBox.width, BUTTON_HGT, self, self.onComboBoxChange)
+    self.loadLastComboBox.internal = "loadLast"
     self:addChild(self.loadLastComboBox)
 
     for _, name in ipairs({"off", "on", "category"}) do
@@ -719,14 +742,15 @@ function SortingRulesEditor:createChildren()
     end
 
     self.categoryComboBox = ISComboBox:new(center_x, self.loadLastComboBox:getBottom() + PADDING, self.loadFirstComboBox.width, BUTTON_HGT, self, self.onComboBoxChange)
+    self.categoryComboBox.internal = "category"
     self:addChild(self.categoryComboBox)
-    self.categoryComboBox:addOptionWithData("Automatic", "automatic")
+    -- self.categoryComboBox:addOptionWithData("Automatic", "automatic")
     for _, category in ipairs(core.rawCategoryOrder) do
         self.categoryComboBox:addOptionWithData(category, category)
     end
-    self.loadFirstComboBox.enable = false
-    self.loadLastComboBox.enable = false
-    self.categoryComboBox.enable = false
+    -- self.loadFirstComboBox.disabled = true
+    -- self.loadLastComboBox.disabled = true
+    -- self.categoryComboBox.disabled = true
 
     -- Editing list (right)
     local editingModeList = scrollExt.createList(self, PADDING * 2 + innerWitdth * 0.6, self.modsOrderList.y, innerWitdth * 0.4, innerHeight * 0.5 - PADDING - BUTTON_HGT)
