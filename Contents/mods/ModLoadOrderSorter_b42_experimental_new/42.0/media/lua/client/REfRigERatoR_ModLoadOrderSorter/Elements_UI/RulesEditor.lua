@@ -44,6 +44,7 @@ function Editor:new(x, y, width, height, owner)
     o.owner = owner
     o.model = Model.new(core.layers.SortingRules:beginEdit())
     o.byId, o.collapsed, o.highlight = {}, {}, {}
+    o.categoryCollapsed, o.effectiveCategories, o.baseCategories = {}, {}, {}
     o.view = 'rules'
     o.backgroundColor = { r=0, g=0, b=0, a=.95 }
     return o
@@ -56,15 +57,89 @@ function Editor:instantiate()
 end
 
 function Editor:fillMods()
-    self.mods:clear(); self.byId = {}
+    self.byId = {}
     for _, row in ipairs(self.owner.modList.items) do
         local item = row.item
-        if item and item.modId then
+        if item and type(item.modId) == 'string' and item.modId:match('%S') then
             self.byId[item.modId] = item
-            self.mods:addItem(item.name or item.modId, { modId=item.modId, name=item.name or item.modId })
+            if not self.selectedId then self.selectedId = item.modId end
         end
     end
-    if #self.mods.items > 0 then self.mods.selected = 1; self.selectedId = self.mods.items[1].item.modId end
+    self:calculateCategories()
+end
+
+function Editor:calculateCategories()
+    local ok, effective, base = pcall(sorter.calculateCategories, sorter, self.owner.modList.items, self.model.draft)
+    if ok then
+        self.effectiveCategories, self.baseCategories = effective, base
+        self.categoryError = nil
+    else
+        -- Keep every mod visible even if incomplete/invalid data cannot be projected.
+        self.effectiveCategories, self.baseCategories = {}, {}
+        self.categoryError = tr('CategoryError') .. ': ' .. tostring(effective)
+    end
+    self:rebuildMods()
+end
+
+function Editor:rebuildMods()
+    local l = self.mods
+    local scrollY = l.getYScroll and l:getYScroll() or 0
+    local groups = {}
+    for _, row in ipairs(self.owner.modList.items) do
+        local item = row.item
+        if item and type(item.modId) == 'string' and item.modId:match('%S') then
+            local category = self.effectiveCategories[item.modId] or 'undefined'
+            local group = groups[category] or {}
+            groups[category] = group
+            group[#group + 1] = item
+        end
+    end
+    l:clear(); l.selected = 0
+    -- Invalid/missing categories resolve to the same fallback as the sorter.
+    for _, category in ipairs(core.rawCategoryOrder) do
+        local group = groups[category]
+        if group and #group > 0 then
+            local closed = self.categoryCollapsed[category]
+            l:addItem((closed and '[+] ' or '[-] ') .. category .. ' (' .. #group .. ')',
+                { kind='category', category=category, name='' })
+            if not closed then
+                for _, item in ipairs(group) do
+                    local row = l:addItem(item.name or item.modId,
+                        { kind='mod', modId=item.modId, name=item.name or item.modId })
+                    if item.modId == self.selectedId then l.selected = row.index or #l.items end
+                end
+            end
+            groups[category] = nil
+        end
+    end
+    -- A malformed category configuration must not silently drop mods.
+    for category, group in pairs(groups) do
+        l:addItem('[-] ' .. category .. ' (' .. #group .. ')', {kind='category', category=category, name=''})
+        for _, item in ipairs(group) do
+            local row = l:addItem(item.name or item.modId, {kind='mod', modId=item.modId, name=item.name or item.modId})
+            if item.modId == self.selectedId then l.selected = row.index or #l.items end
+        end
+    end
+    l.foundItems, l.foundIndex, l.foundCounter = {}, 0, 0
+    if l.setYScroll then l:setYScroll(scrollY) end
+    self:refreshMods()
+end
+
+-- ScrollExtensions invokes this before searching visible rows.
+function Editor:revealCategoryMatches(word)
+    local changed = false
+    for _, row in ipairs(self.owner.modList.items) do
+        local item = row.item
+        if item and type(item.modId) == 'string' then
+            local name = tostring(item.name or item.modId):lower()
+            local category = self.effectiveCategories[item.modId] or 'undefined'
+            if self.categoryCollapsed[category] and
+                (name:find(word, 1, true) or item.modId:lower():find(word, 1, true)) then
+                self.categoryCollapsed[category] = nil; changed = true
+            end
+        end
+    end
+    if changed then self:rebuildMods() end
 end
 
 function Editor:info(id)
@@ -99,12 +174,17 @@ end
 function Editor:refreshMods()
     for _, row in ipairs(self.mods.items) do
         local id = row.item.modId
-        local rule = self.model.draft[id]
-        local marker = self.model:dirty(id) and '* ' or (rule and '+ ' or '')
-        local relation = self.highlight[id]
-        row.text = marker .. (relation and ('[' .. relation.badges .. '] ') or '') .. self:name(id)
-        row.item.color = relation and relation.color or nil
-        row.tooltip = id
+        if id then
+            local rule = self.model.draft[id]
+            local marker = self.model:dirty(id) and '* ' or (rule and '+ ' or '')
+            local relation = self.highlight[id]
+            local effective, base = self.effectiveCategories[id], self.baseCategories[id]
+            local promoted = effective and base and effective ~= base
+            row.text = '    ' .. marker .. (promoted and '^ ' or '') ..
+                (relation and ('[' .. relation.badges .. '] ') or '') .. self:name(id)
+            row.item.color = relation and relation.color or nil
+            row.tooltip = id .. (promoted and (' | ' .. tr('Promoted') .. ': ' .. base .. ' -> ' .. effective) or '')
+        end
     end
 end
 
@@ -168,6 +248,7 @@ end
 function Editor:changed()
     self.message = nil
     if self.preview then self.previewStale = true end
+    self:calculateCategories()
     self.view = 'rules'; self:refresh()
 end
 function Editor:onCombo(combo)
@@ -189,6 +270,12 @@ function Editor:onModClick(list, x, y)
     ISScrollingListBox.onMouseDown(list, x, y)
     local row = list.items[list.mouseoverselected]
     if not row then return end
+    if row.item.kind == 'category' then
+        local category = row.item.category
+        self.categoryCollapsed[category] = not self.categoryCollapsed[category]
+        self:rebuildMods()
+        return
+    end
     if self.addKey then
         local id, key = row.item.modId, self.addKey
         self.addKey = nil
@@ -202,7 +289,7 @@ function Editor:onModClick(list, x, y)
 end
 function Editor:onModRightClick(list, x, y)
     local row = list.items[list.mouseoverselected]
-    if not row or not self.selectedId or row.item.modId == self.selectedId then return end
+    if not row or row.item.kind ~= 'mod' or not self.selectedId or row.item.modId == self.selectedId then return end
     local target = row.item.modId
     local menu = MLOS_ContextMenu:new(list:getAbsoluteX() + x, list:getAbsoluteY() + y)
     for _, key in ipairs({ 'loadAfter', 'loadBefore', 'incompatibleMods' }) do
@@ -272,13 +359,27 @@ end
 function Editor:discardAndClose()
     self:setVisible(false); self.owner:setVisible(true); self:removeFromUIManager()
 end
+-- Reproject on an analysis run transition, not in the draw loop. A completed
+-- run may contain partial data after layer errors; it is still usable.
+function Editor:update()
+    if ISPanelJoypad.update then ISPanelJoypad.update(self) end
+    local manager = core.layersManager
+    local run = manager and manager.run
+    local completed = run and run.completed or false
+    if run ~= self.categoryRun or completed ~= self.categoryRunCompleted then
+        self.categoryRun, self.categoryRunCompleted = run, completed
+        if self.preview then self.previewStale = true end
+        self:calculateCategories()
+        self:refresh()
+    end
+end
 function Editor:prerender()
     ISPanelJoypad.prerender(self)
     self:drawTextCentre(tr('Title') .. (self.model:dirty() and ' *' or ''), self.width/2, pad, 1,1,1,1,UIFont.Medium)
     local name = self.selectedId and (self:name(self.selectedId) .. ' (' .. self.selectedId .. ')  |  ' .. tr('Detected') .. ': ' .. tostring(self:info(self.selectedId).category or 'undefined')) or tr('Select')
     self:drawText(tr('Legend'), pad, 40, .8,.8,.8,1,UIFont.Small)
     self:drawText(name, self.rightX, 40, 1,1,1,1,UIFont.Small)
-    local hint = self.addKey and (tr('ChooseTarget') .. ': ' .. getText(labels[self.addKey])) or (self.message or '')
+    local hint = self.categoryError or (self.addKey and (tr('ChooseTarget') .. ': ' .. getText(labels[self.addKey])) or (self.message or ''))
     self:drawText(hint, pad, self.height - bh - 30, 1,.8,.3,1,UIFont.Small)
 end
 
@@ -290,6 +391,7 @@ function Editor:createChildren()
     local bottom = self.height - bh - 45
     self.mods = list(self, x, top, leftW, bottom - top, drawRow)
     scroll:addSearchEntry(self.mods, nil, false)
+    self.mods.MLOS_folders = { revealMatches = function(_, word) self:revealCategoryMatches(word) end }
     self.mods.onMouseDown = function(l, a, b) self:onModClick(l, a, b) end
     self.mods.onRightMouseDown = function(l, a, b) self:onModRightClick(l, a, b); return true end
     local y = top

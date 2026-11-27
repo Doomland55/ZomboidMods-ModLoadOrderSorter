@@ -34,10 +34,11 @@ local function merge(dst, source)
     end
 end
 
-local function mergeLayer(result, source, allowRequirements)
+local categoryFields = { category=true, requirements=true, loadAfter=true, loadBefore=true }
+local function mergeLayer(result, source, allowRequirements, categoryOnly)
     if type(source) ~= "table" then return end
     for key, value in pairs(source) do
-        if key ~= "requirements" or allowRequirements then
+        if (key ~= "requirements" or allowRequirements) and (not categoryOnly or categoryFields[key]) then
             if type(value) == "table" then
                 if type(result[key]) ~= "table" then result[key] = {} end
                 merge(result[key], value)
@@ -46,7 +47,7 @@ local function mergeLayer(result, source, allowRequirements)
     end
 end
 
-function Data.collect(modsList, activeRules)
+function Data.collect(modsList, activeRules, categoryOnly)
     local layers = core.layers or {}
     local info = layers.ModsInfo and layers.ModsInfo.data or {}
     local files = layers.ModsFiles and layers.ModsFiles.data or {}
@@ -60,13 +61,13 @@ function Data.collect(modsList, activeRules)
             if not records[id] then
                 local result = { id = id, name = item.name or id, requirements = {},
                     loadAfter = {}, loadBefore = {}, incompatibleMods = {} }
-                mergeLayer(result, info[id], true)
+                mergeLayer(result, info[id], true, categoryOnly)
                 -- Preserve provenance for conflict resolution, even if a rule
                 -- repeats an edge already specified in mod.info.
                 result.infoLoadAfter = copy((info[id] or {}).loadAfter or {})
                 result.infoLoadBefore = copy((info[id] or {}).loadBefore or {})
-                mergeLayer(result, files[id], false)
-                mergeLayer(result, rules[id], false)
+                mergeLayer(result, files[id], false, categoryOnly)
+                mergeLayer(result, rules[id], false, categoryOnly)
                 result.name = type(result.name) == "string" and result.name or id
                 records[id], order[id] = result, i
             end

@@ -83,6 +83,13 @@ local function categoryIndices(records, edges)
     return categories
 end
 
+-- The same promotion logic as the sorting graph, without file heuristics.
+function Graph.effectiveCategories(records)
+    local edges = {}
+    addExplicit(edges, records)
+    return categoryIndices(records, edges)
+end
+
 local function addFileHints(edges, records, files, order)
     local owners = {}
     for id in pairs(records) do

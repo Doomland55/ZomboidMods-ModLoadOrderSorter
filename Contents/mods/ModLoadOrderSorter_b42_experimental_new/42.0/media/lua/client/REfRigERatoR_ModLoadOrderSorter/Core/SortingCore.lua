@@ -41,6 +41,20 @@ local function prepare(self, modsList, activeRules)
     return records, order, counts, edges, categories
 end
 
+-- Read-only category projection for the editor. File conflict hints do not
+-- promote categories, so avoid scanning/copying file inventories here.
+function Sorter:calculateCategories(modsList, activeRules)
+    local records = Data.collect(modsList, activeRules, true)
+    local categories = Graph.effectiveCategories(records)
+    local effective, base = {}, {}
+    for id, index in pairs(categories) do
+        effective[id] = core.rawCategoryOrder[index] or "undefined"
+        local category = records[id].category
+        base[id] = core.categoryOrder[category] and category or "undefined"
+    end
+    return effective, base
+end
+
 function Sorter:buildGraph(modsList, activeRules)
     local records, order, _, edges, categories = prepare(self, modsList, activeRules)
     local enabled = {}

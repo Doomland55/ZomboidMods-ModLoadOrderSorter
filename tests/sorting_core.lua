@@ -41,6 +41,10 @@ layers({A={category='early',requirements={'B'},loadAfter={'D'}}, B={category='la
 local list={row('A'),row('B'),row('C'),row('D'),row('E')}
 local edges, _, _, cats = sorter:buildGraph(list)
 assert(cats.A==1 and cats.B==1 and cats.C==1 and cats.D==1 and cats.E==1)
+local beforeWarnings = sorter.warnings
+local effective, baseCats = sorter:calculateCategories(list)
+assert(effective.B=='early' and effective.C=='early' and baseCats.B=='late')
+assert(sorter.warnings==beforeWarnings and core.layers.ModsInfo.data.B.category=='late')
 local result=sorter:sort(list)
 local index={}; for i,id in ipairs(result) do index[id]=i end
 assert(index.C < index.B and index.B < index.A and index.D < index.A and index.E < index.A)

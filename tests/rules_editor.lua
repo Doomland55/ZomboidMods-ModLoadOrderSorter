@@ -61,6 +61,13 @@ end
 function scroll:addSearchEntry() end
 package.loaded[prefix..'Elements_UI/ScrollExtensions']=scroll
 local sorter={warnings={'old'},lastEdges={old=true},brokenEdges={}}
+function sorter:calculateCategories(rows, rules)
+ local effective = { A='map', B='undefined', C='undefined' }
+ if rules.A and rules.A.loadAfter then
+  for _, dep in ipairs(rules.A.loadAfter) do effective[dep] = 'map' end
+ end
+ return effective, { A='map', B='undefined', C='undefined' }
+end
 function sorter:sort(rows,rules)
  assert(rules.A.loadBefore[1]=='C'); info.A.effectiveCategory='temporary'
  self.warnings={{title='cycle',message='details'}};self.lastEdges={};self.brokenEdges={}
@@ -71,16 +78,30 @@ local Editor=dofile(root..'Elements_UI/RulesEditor.lua')
 local owner={modList={items={{item={modId='A',name='Alpha'}},{item={modId='B',name='Beta'}},{item={modId='C',name='Gamma'}}}},setVisible=function(self,v) self.visible=v end}
 local e=Editor:new(0,0,1000,700,owner); e:initialise();e:instantiate()
 assert(e.selectedId=='A' and e.details.items[1].item.kind=='group')
-e.addKey='incompatibleMods';e.mods.mouseoverselected=2;e:onModClick(e.mods,0,0)
-assert(e.model.draft.A.incompatibleMods[1]=='B' and e.mods.selected==1 and e.model:dirty())
+assert(e.mods.items[1].item.kind=='category' and e.mods.items[1].item.category=='map')
+assert(e.mods.items[2].item.modId=='A' and e.mods.items[3].item.category=='undefined')
+-- Category toggles never change the source mod or consume the add mode.
+e.addKey='incompatibleMods';e.mods.mouseoverselected=3;e:onModClick(e.mods,0,0)
+assert(e.selectedId=='A' and e.addKey=='incompatibleMods' and #e.mods.items==3)
+e:revealCategoryMatches('beta'); assert(#e.mods.items==5 and e.mods.items[4].item.modId=='B')
+e.mods.mouseoverselected=4;e:onModClick(e.mods,0,0)
+assert(e.model.draft.A.incompatibleMods[1]=='B' and e.mods.selected==2 and e.model:dirty())
+-- Unsaved explicit ordering moves B to A's category immediately.
+e.model:add('A','loadAfter','B'); e:changed()
+assert(e.effectiveCategories.B=='map' and e.mods.items[3].item.modId=='B')
+assert(e.mods.items[3].text:find('^',1,true))
+assert(e.mods.items[3].tooltip:find('map',1,true))
 local original=sorter.warnings;e:simulate();assert(e.view=='preview' and e.preview.ids[1]=='B')
 assert(sorter.warnings==original and info.A.effectiveCategory==nil and owner.modList.items[1].item.modId=='A')
+core.layersManager={run={completed=false}}
+e:update(); assert(e.previewStale)
+e.previewStale=false; core.layersManager.run.completed=true; e:update(); assert(e.previewStale)
 e.model:set('A','category','map');e:changed(); assert(e.previewStale)
 e.view='files';e:refresh();assert(#e.details.items==2)
 e.view='rules';e:refresh();local selected
 for i,r in ipairs(e.details.items) do if r.item.id=='B' and r.item.key=='loadAfter' and r.item.user then selected=i end end
--- Persisted A had its user B removed in the earlier commit; metadata survives.
-assert(selected==nil)
+-- The new user rule and metadata are both visible.
+assert(selected~=nil and e.details.items[selected].item.user)
 fail=true;e:save();assert(e.model:dirty() and e.message:find('SaveError'))
 fail=false;e:save();assert(not e.model:dirty() and persisted.A.incompatibleMods[1]=='B')
 print('Rules editor model and UI flow tests passed')

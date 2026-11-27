@@ -109,5 +109,7 @@
     "UI_MLOS_RE_Simulate": "Симуляция",
     "UI_MLOS_RE_Save": "Сохранить",
     "UI_MLOS_RE_Detected": "Определена",
-    "UI_MLOS_RE_Legend": "A после | B перед | I несовместим | R зависимость | D зависит от него"
+    "UI_MLOS_RE_Legend": "A после | B перед | I несовместим | R зависимость | D зависит от него",
+    "UI_MLOS_RE_CategoryError": "Не удалось вычислить категории",
+    "UI_MLOS_RE_Promoted": "Перенесён из-за явных зависимостей"
 }

@@ -108,5 +108,7 @@
     "UI_MLOS_RE_Simulate": "Simulate",
     "UI_MLOS_RE_Save": "Save",
     "UI_MLOS_RE_Detected": "Detected",
-    "UI_MLOS_RE_Legend": "A after | B before | I incompatible | R requires | D required by"
+    "UI_MLOS_RE_Legend": "A after | B before | I incompatible | R requires | D required by",
+    "UI_MLOS_RE_CategoryError": "Could not calculate categories",
+    "UI_MLOS_RE_Promoted": "Promoted by explicit dependencies"
 }
