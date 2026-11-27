@@ -209,57 +209,49 @@ end
 -- #region ========== ZombieBuddy bridge =========
 
 local function buddyAvailable()
-    return type(MLOS_BuddyBegin) == "function" and type(MLOS_BuddyState) == "function"
-        and type(MLOS_BuddyCount) == "function" and type(MLOS_BuddyPath) == "function"
-        and type(MLOS_BuddySource) == "function" and type(MLOS_BuddyFingerprint) == "function"
-        and type(MLOS_BuddyRelease) == "function"
+    return type(MLOS_listModFiles) == "function"
 end
 
-function MLOS_ModsFiles:releaseBuddyJob()
-    if self.buddyJob then
-        pcall(MLOS_BuddyRelease, self.buddyJob)
-        self.buddyJob = nil
-    end
+-- Convert root-relative Java paths to paths accepted by getModFileReader.
+-- B42 looks in the version directory before common for duplicate paths.
+local function modRootPrefix(root, child)
+    if not root or not child then return nil end
+    root = root:gsub("\\", "/"):gsub("/$", "")
+    child = child:gsub("\\", "/"):gsub("/$", "")
+    if child:sub(1, #root + 1) ~= root .. "/" then return nil end
+    local prefix = child:sub(#root + 2)
+    if prefix == "" or prefix:find("/", 1, true) or prefix == ".." then return nil end
+    return prefix .. "/"
 end
 
---- Starts the Java scan of one mod and yields until it is finished. One mod at
---- a time keeps the bridge snapshot bounded.
----@return table|nil { files, fingerprint, read = function(index) } or nil when the bridge failed for this mod
-function MLOS_ModsFiles:openBuddySnapshot(modId)
-    local ok, job = pcall(MLOS_BuddyBegin, modId)
-    if not ok or not job then return nil end
-    self.buddyJob = job
-
-    local state
-    repeat
-        ok, state = pcall(MLOS_BuddyState, job)
-        if ok and state == "pending" then CM.sleep(20) end
-    until not ok or state ~= "pending"
-    if not ok or state ~= "ready" then return nil end
-
-    local snapshot = { files = {} }
-    local valid = pcall(function()
-        local count = MLOS_BuddyCount(job)
-        snapshot.fingerprint = MLOS_BuddyFingerprint(job)
-        if type(count) ~= "number" or count < 0 or type(snapshot.fingerprint) ~= "string" then
-            error("invalid bridge result for " .. tostring(modId))
+local function listBuddyLuaFiles(item)
+    local ok, entries = pcall(MLOS_listModFiles, item.modId)
+    if not ok or not entries then return nil end
+    local info = item.modInfo
+    local version = modRootPrefix(info:getDir(), info:getVersionDir())
+    local common = modRootPrefix(info:getDir(), info:getCommonDir())
+    if not version or not common then return nil end
+    local files, seen = {}, {}
+    local read, count = pcall(function() return entries:size() end)
+    if not read or type(count) ~= "number" or count < 0 then return nil end
+    for i = 0, count - 1 do
+        local valid, path = pcall(function() return entries:get(i) end)
+        if not valid or type(path) ~= "string" or path:find("\\", 1, true)
+            or path:find("\n", 1, true) or path:find("\r", 1, true)
+            or path:find("/../", 1, true) or path:sub(1, 1) == "/" then return nil end
+        local relative
+        if path:sub(1, #version) == version then relative = path:sub(#version + 1)
+        elseif path:sub(1, #common) == common then relative = path:sub(#common + 1) end
+        if relative and relative:sub(1, 10) == "media/lua/" and relative:lower():sub(-4) == ".lua" then
+            -- The cache format uses commas and pipes as delimiters.
+            if relative:find(",", 1, true) or relative:find("|", 1, true) then return nil end
+            if not seen[relative] then seen[relative] = true; files[#files + 1] = relative end
         end
-        for n = 0, count - 1 do
-            local path = MLOS_BuddyPath(job, n)
-            if type(path) ~= "string" then error("invalid bridge path") end
-            snapshot.files[n + 1] = path
-        end
-    end)
-    if not valid then return nil end
-
-    function snapshot.read(index)
-        local read, source = pcall(MLOS_BuddySource, job, index - 1)
-        return read and source or nil
+        CM.checkpoint()
     end
-
-    return snapshot
+    table.sort(files)
+    return files
 end
---  #endregion
 
 
 --================================================
@@ -294,20 +286,13 @@ local function appendModifications(result, filename, functions)
 end
 
 --- Parses the given files of one mod, yielding between files when needed.
----@param readSource function|nil (index) -> file text; nil = read with getModFileReader
 ---@return table modifications
 ---@return boolean failed true when at least one file could not be read
-local function parseFiles(modId, files, readSource)
+local function parseFiles(modId, files)
     local modifications, failed = {}, false
-    for index, path in ipairs(files) do
-        local reader
-        if readSource then
-            local source = readSource(index)
-            reader = type(source) == "string" and Parser.stringReader(source) or nil
-        else
-            local ok, fileReader = pcall(getModFileReader, modId, path, false)
-            reader = ok and fileReader or nil
-        end
+    for _, path in ipairs(files) do
+        local ok, fileReader = pcall(getModFileReader, modId, path, false)
+        local reader = ok and fileReader or nil
         if reader then
             local ok, parsed = pcall(Parser.parse, reader)
             if ok then
@@ -352,16 +337,12 @@ end
 
 function MLOS_ModsFiles:scanMod(item, loadedPaths, useBuddy)
     if useBuddy then
-        local snapshot = self:openBuddySnapshot(item.modId)
-        if snapshot then
-            local changes, failed = parseFiles(item.modId, snapshot.files, snapshot.read)
-            self:releaseBuddyJob()
+        local files = listBuddyLuaFiles(item)
+        if files then
+            local changes, failed = parseFiles(item.modId, files)
             if not failed then
-                return { files = snapshot.files, modifications = changes,
-                    fsSignature = snapshot.fingerprint, complete = true }
+                return { files = files, modifications = changes, complete = true }
             end
-        else
-            self:releaseBuddyJob()
         end
         print("[MLOS] ZombieBuddy scan failed for " .. tostring(item.modId) .. "; using loaded files")
     end
@@ -380,7 +361,6 @@ function MLOS_ModsFiles:getData(modList, reread)
         end,
         onFinish = function() CM:setProgress(1, "[ModsFiles] finished") end,
         onError = function(_, err)
-            self:cancel()
             self.error = tostring(err)
             print("[MLOS] ModsFiles analysis failed: " .. self.error)
         end
@@ -411,7 +391,7 @@ function MLOS_ModsFiles:load(modList, reread)
             local wid = workshopId(item)
             local updatedTime = wid and self.workshopTimes[wid] or nil
             local result = cached
-            if needsScan(cached, updatedTime, now) then
+            if needsScan(cached, updatedTime, now) or (useBuddy and cached and not cached.complete) then
                 if not loadedPaths then loadedPaths = getLoadedLuaPaths() end
                 local scanned = self:scanMod(item, loadedPaths, useBuddy)
                 if scanned and cached and cached.complete and not scanned.complete then
@@ -445,11 +425,6 @@ function MLOS_ModsFiles:load(modList, reread)
     if not ok or not saved then error("[MLOS] Failed to save ModsFiles cache: " .. tostring(saved)) end
 end
 
-
---- Called by the manager when the analysis is interrupted or fails.
-function MLOS_ModsFiles:cancel()
-    self:releaseBuddyJob()
-end
 
 function MLOS_ModsFiles:getWarnings()
     if not self:hasNotLoadedMods() then return {} end

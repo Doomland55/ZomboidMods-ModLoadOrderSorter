@@ -108,3 +108,38 @@ function getModFileReader() return nil end
 local old = layer.cache.A.lastAnalyzedTime
 layer:load({a}); assert(layer.cache.A.lastAnalyzedTime == old and #layer.notLoaded == 1)
 print('ModsFiles cache tests passed')
+-- Bridge returns paths relative to the mod root, not reader paths. Version and
+-- common duplicates collapse because the game reader gives version priority.
+local c = row('C', nil)
+function c.item.modInfo:getVersionDir() return '/mods/C/42.0' end
+function c.item.modInfo:getCommonDir() return '/mods/C/common' end
+local readPaths = {}
+function getModFileReader(id, path)
+    readPaths[#readPaths + 1] = path
+    return { close = function() end }
+end
+function MLOS_listModFiles(id)
+    assert(id == 'C')
+    return array({'common/media/lua/client/shared.lua', '42.0/media/lua/client/shared.lua',
+        '42.0/media/lua/client/deep/other.lua', '41.0/media/lua/ignored.lua', 'common/media/textures/x.png'})
+end
+layer:load({c})
+assert(layer.data.C.complete and #layer.data.C.files == 2 and #readPaths == 2)
+assert(layer.data.C.files[1] == 'media/lua/client/deep/other.lua')
+assert(layer.data.C.files[2] == 'media/lua/client/shared.lua')
+assert(#layer.notLoaded == 0)
+-- Cache remains fresh; enumerating the bridge again would fail this assertion.
+function MLOS_listModFiles() error('fresh cache was rescanned') end
+layer:load({c}); assert(layer.data.C.complete)
+print('ZombieBuddy bridge Lua tests passed')
+-- Successful empty list is a complete snapshot, not an error.
+local d = row('D', nil)
+function d.item.modInfo:getVersionDir() return '/mods/D/42.0' end
+function d.item.modInfo:getCommonDir() return '/mods/D/common' end
+function MLOS_listModFiles() return array({}) end
+layer:load({d}); assert(layer.data.D.complete and #layer.data.D.files == 0)
+-- A bridge failure must not overwrite a previously complete snapshot.
+now = now + 86401
+function MLOS_listModFiles() return nil end
+layer:load({c}); assert(layer.cache.C.complete and #layer.cache.C.files == 2 and #layer.notLoaded == 1)
+print('Bridge empty/failure tests passed')
