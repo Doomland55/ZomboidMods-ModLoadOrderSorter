@@ -13,9 +13,18 @@ local core={rawCategoryOrder={'map','undefined'},layers={
  SortingRules={beginEdit=function() return copy(persisted) end,
  commitEdit=function(_, value) if fail then return false end; persisted=value; return true end}}}
 package.loaded[prefix..'Core/Core']=core
-package.loaded[prefix..'Core/1_Utils']={deepCopy=function(_, t) return copy(t) end}
+package.loaded[prefix..'Core/1_Utils']={deepCopy=function(_, t) return copy(t) end,
+ tableIsEmpty=function(_, t) for _ in pairs(t) do return false end; return true end}
+-- Kahlua in Project Zomboid does not expose the global next function.
+local originalNext = next
+next = nil
 local Model=dofile(root..'Elements_UI/RulesEditorModel.lua')
 package.loaded[prefix..'Elements_UI/RulesEditorModel']=Model
+local empty = Model.new({})
+empty:set('A', 'category', 'map')
+assert(empty.draft.A.category == 'map')
+empty:set('A', 'category', nil)
+assert(empty.draft.A == nil)
 local m=Model.new(persisted)
 local groups=m:groups('A',info.A)
 assert(#groups.loadAfter==2 and groups.loadAfter[1].metadata and groups.loadAfter[1].user)
@@ -104,4 +113,5 @@ for i,r in ipairs(e.details.items) do if r.item.id=='B' and r.item.key=='loadAft
 assert(selected~=nil and e.details.items[selected].item.user)
 fail=true;e:save();assert(e.model:dirty() and e.message:find('SaveError'))
 fail=false;e:save();assert(not e.model:dirty() and persisted.A.incompatibleMods[1]=='B')
+next = originalNext
 print('Rules editor model and UI flow tests passed')

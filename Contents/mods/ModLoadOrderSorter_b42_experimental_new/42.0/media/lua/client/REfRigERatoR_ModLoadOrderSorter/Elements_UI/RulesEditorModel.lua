@@ -35,7 +35,7 @@ function Model:clean(id)
     for _, field in ipairs(fields) do
         if type(rule[field]) == 'table' and #rule[field] == 0 then rule[field] = nil end
     end
-    if next(rule) == nil then self.draft[id] = nil end
+    if utils:tableIsEmpty(rule) then self.draft[id] = nil end
 end
 
 function Model:add(id, key, target)
