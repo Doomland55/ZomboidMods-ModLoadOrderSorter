@@ -2,7 +2,7 @@
 -- lua tests/mods_files_cache.lua
 local base = 'Contents/mods/ModLoadOrderSorter_b42_experimental_new/42.0/media/lua/client/REfRigERatoR_ModLoadOrderSorter/'
 local prefix = 'REfRigERatoR_ModLoadOrderSorter/'
-local files, now, steam, scanCount = {}, 1000000, {}, 0
+local files, now, steam, scanCount, saveCount = {}, 1000000, {}, 0, 0
 local activeQueries = {}
 local queryCount = 0
 local pendingCallback = nil
@@ -23,6 +23,7 @@ end
 function utils:joinpath(a, b) return a .. '/' .. b end
 local core = { MLOS_LAYERS_ROOT = 'test', layers = {} }
 function core:saveTxtFile(path, data, encode)
+    saveCount = saveCount + 1
     local out = {}; for id, entry in pairs(data) do out[#out+1] = encode(id, entry) end
     files[path] = table.concat(out, '\n'); return true
 end
@@ -96,7 +97,9 @@ assert(scanCount == 2 and #activeQueries == 1 and activeQueries[1] == '123')
 assert(layer.cache.A.updatedTime == 100 and layer.cache.B.lastAnalyzedTime == now)
 assert(layer.cache.A.complete == false and #layer.notLoaded == 0,
     'loaded mods should not warn just because their snapshot is partial')
+local previousSaves = saveCount
 layer:load({a,b}); assert(scanCount == 2 and queryCount == 1, 'fresh cache must not be scanned or requeried')
+assert(saveCount == previousSaves, 'unchanged cache must not be rewritten')
 steam['123'] = 101
 layer:load({a}); assert(scanCount == 2 and queryCount == 1 and layer.cache.A.updatedTime == 100,
     'Steam updates are checked once per session')
@@ -196,3 +199,66 @@ assert(not files[cachePath]:find('signature=legacy%-value'))
 assert(not files[cachePath]:find('\nsignature='))
 assert(layer.cache.X and layer.cache.Y)
 print('Session Workshop cache and signature migration tests passed')
+
+-- Both method syntaxes and aliases must survive cache serialization.
+layer.cache.X.modifications = {
+    { file = 'media/lua/x.lua', fullTarget = 'MyClass.method', line = 1, isHook = true },
+    { file = 'media/lua/x.lua', fullTarget = 'MyClass:other', line = 2 },
+    { file = 'media/lua/x.lua', fullTarget = 'require:Some.Path.method', line = 3 },
+}
+layer.cacheDirty = true
+layer:load({x,y})
+layer.cacheLoaded = false
+layer:load({x,y})
+local entries = layer.cache.X.modifications
+assert(entries[1].className == 'MyClass' and entries[1].methodName == 'method' and entries[1].isHook)
+assert(entries[2].className == 'MyClass' and entries[2].methodName == 'other')
+assert(entries[3].className == 'require:Some.Path' and entries[3].methodName == 'method')
+
+-- A failed bridge scan is remembered, survives cache reload and retries after
+-- one day; a complete older snapshot is preserved until a successful scan.
+local attempts = 0
+function MLOS_listModFiles() attempts = attempts + 1; return nil end
+now = now + 86401
+layer:load({c}); assert(attempts == 1 and layer.cache.C.complete and layer.cache.C.buddyFailedAt == now)
+layer:load({c}); assert(attempts == 1 and #layer.notLoaded == 1)
+layer.cacheLoaded = false
+layer:load({c}); assert(attempts == 1 and layer.cache.C.buddyFailedAt == now)
+now = now + 86401
+function MLOS_listModFiles() attempts = attempts + 1; return array({}) end
+layer:load({c}); assert(attempts == 2 and layer.cache.C.complete and not layer.cache.C.buddyFailedAt)
+print('Cache method roundtrip and bridge retry tests passed')
+-- Exercise nested parser yields inside an outer Lua 5.1 task: yielding from
+-- inside pcall would raise an error, while this coroutine boundary must work.
+MLOS_listModFiles = nil
+local realParser = dofile(base .. 'Layers/ModsFilesParser.lua')
+package.loaded[prefix .. 'Layers/ModsFilesParser'] = realParser
+local incrementalLayer = dofile(base .. 'Layers/ModsFiles.lua')
+local bigSource = string.rep('-- filler\n', 500) .. 'function External.method() end\n'
+loadedMods.G = true
+local g = row('G', nil)
+function getLoadedLuaCount() return 1 end
+function getLoadedLua() return '/mods/G/media/lua/client/big.lua' end
+function getModFileReader() return realParser.stringReader(bigSource) end
+local checkpointCount = 0
+function cm.checkpoint() checkpointCount = checkpointCount + 1; coroutine.yield() end
+local task = coroutine.create(function() incrementalLayer:load({g}) end)
+while coroutine.status(task) ~= 'dead' do
+    local ok, err = coroutine.resume(task)
+    assert(ok, err)
+end
+assert(checkpointCount >= 4, 'large parser must yield to the outer task')
+assert(incrementalLayer.data.G.modifications[1].fullTarget == 'External.method')
+print('Nested coroutine integration tests passed')
+-- Cleanup closes an in-progress reader and releases only the task's Steam lock.
+local closeCount = 0
+function cm.run(_, opts) return opts end
+local options = incrementalLayer:getData({g})
+local cancelled = { mlosReader = { close = function() closeCount = closeCount + 1 end } }
+incrementalLayer.fetchInProgress, incrementalLayer.fetchOwner = true, cancelled
+options.onCancel(cancelled)
+assert(closeCount == 1 and not cancelled.mlosReader and not incrementalLayer.fetchInProgress)
+incrementalLayer.fetchInProgress, incrementalLayer.fetchOwner = true, {}
+options.onCancel({})
+assert(incrementalLayer.fetchInProgress, 'another task must retain its Steam lock')
+print('ModsFiles cancellation cleanup tests passed')

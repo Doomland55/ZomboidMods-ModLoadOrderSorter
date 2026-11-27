@@ -37,12 +37,19 @@ end
 
 --- Scans one Lua file; the reader is closed when the scan is finished.
 ---@param reader table object with readLine() and close()
+---@param checkpoint function|nil called periodically; may yield when invoked in a coroutine
 ---@return table list of { className, methodName, separator, line, isHook, alias }
-function Parser.parse(reader)
+function Parser.parse(reader, checkpoint)
 	local declaredTables = {}   -- real table literals: "X = {"
 	local aliasMap = {}         -- localName -> resolved dotted target ("A.B.C") or "require:<path>"
 	local modifiedFunctions = {}
 	local savedOriginals = {}
+    local work = 0
+    local function tick()
+        if not checkpoint then return end
+        work = work + 1
+        if work >= 128 then work = 0; checkpoint() end
+    end
 
 	-- resolve an alias chain, including dotted heads:
 	-- local B = A.C; local D = B.E  =>  D resolves to A.C.E
@@ -77,6 +84,7 @@ function Parser.parse(reader)
 	local line = reader:readLine()
 
 	while line ~= nil do
+        tick()
 		lineNum = lineNum + 1
 
         -- Strip line and long comments across lines before detecting definitions.
@@ -165,6 +173,7 @@ function Parser.parse(reader)
 	-- resolve aliases so that the same object referenced via different local
 	-- names produces the same modification target
 	for _, modData in ipairs(modifiedFunctions) do
+        tick()
 		local resolved = resolve(modData.className)
 		if resolved ~= modData.className then
 			modData.alias = modData.className
@@ -175,6 +184,7 @@ function Parser.parse(reader)
 	-- keep only modifications of external (not locally declared) tables
 	local externalModifications = {}
 	for _, modData in ipairs(modifiedFunctions) do
+        tick()
 		if not declaredTables[modData.className] then
 			local fullFuncKey = modData.className .. "." .. modData.methodName
 			modData.isHook = (savedOriginals[fullFuncKey] == true)

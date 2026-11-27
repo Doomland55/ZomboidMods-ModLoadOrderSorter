@@ -142,7 +142,7 @@ function MLOS_SortingCore:buildGraph(modsList, activeRules)
 	--    several files is NOT a conflict (intra-mod analysis is skipped).
 	local targetOwners = {} -- fullTarget -> { [modId] = isHook }
 	for modId, fdata in pairs(modFiles) do
-		if enabled[modId] and fdata.complete ~= false then
+		if enabled[modId] and fdata.complete ~= nil then
 			for _, m in ipairs(fdata.modifications or {}) do
 				local key = ((m.className or "?") .. "." .. (m.methodName or "?"))
 				targetOwners[key] = targetOwners[key] or {}

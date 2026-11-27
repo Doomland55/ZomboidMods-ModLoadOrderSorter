@@ -101,7 +101,7 @@ local function isTask(v) return type(v) == "table" and getmetatable(v) == Task e
 --- opts = {
 ---    name, args = {...},
 ---    onStart(task), onProgress(task, p),
----    onFinish(task, ...), onError(task, err)
+---    onFinish(task, ...), onError(task, err), onCancel(task)
 --- }
 function CM.run(fn, opts)
     assert(type(fn) == "function", "CoroutineManager.run: первым аргументом должна быть функция")
@@ -115,7 +115,7 @@ function CM.run(fn, opts)
         progress = 0,
         lastReported = nil,
         onStart = opts.onStart, onProgress = opts.onProgress,
-        onFinish = opts.onFinish, onError = opts.onError,
+        onFinish = opts.onFinish, onError = opts.onError, onCancel = opts.onCancel,
         -- служебные поля ожидания
         waitFn = nil, waitTimeoutAt = nil, waitInterval = 0, waitNextCheck = 0,
         parkedTick = -1, resumeArgs = nil,
@@ -194,6 +194,7 @@ function CM.cancel(task)
         task.status = "cancelled"
         task.finishedAt = now()
         task.waitFn = nil
+        safeCall(task.onCancel, task)
         log("cancelled '" .. task.name .. "'")
     end
 end
