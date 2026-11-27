@@ -4,6 +4,7 @@ local base = 'Contents/mods/ModLoadOrderSorter_b42_experimental_new/42.0/media/l
 local prefix = 'REfRigERatoR_ModLoadOrderSorter/'
 local files, now, steam, scanCount = {}, 1000000, {}, 0
 local activeQueries = {}
+local queryCount = 0
 local pendingCallback = nil
 local function array(values)
     local a = { values = values or {} }
@@ -62,6 +63,7 @@ function getSteamWorkshopItemIDs() return array({'unrelated'}) end
 function querySteamWorkshopItemDetails(ids, callback, arg)
     assert(arg == nil)
     activeQueries = ids.values
+    queryCount = queryCount + 1
     if steam == false then callback('NotCompleted'); return end
     local details = {}
     for _, id in ipairs(ids.values) do
@@ -94,16 +96,23 @@ assert(scanCount == 2 and #activeQueries == 1 and activeQueries[1] == '123')
 assert(layer.cache.A.updatedTime == 100 and layer.cache.B.lastAnalyzedTime == now)
 assert(layer.cache.A.complete == false and #layer.notLoaded == 0,
     'loaded mods should not warn just because their snapshot is partial')
-layer:load({a,b}); assert(scanCount == 2, 'fresh cache must not be scanned')
+layer:load({a,b}); assert(scanCount == 2 and queryCount == 1, 'fresh cache must not be scanned or requeried')
 steam['123'] = 101
-layer:load({a}); assert(scanCount == 3 and layer.cache.A.updatedTime == 101)
+layer:load({a}); assert(scanCount == 2 and queryCount == 1 and layer.cache.A.updatedTime == 100,
+    'Steam updates are checked once per session')
+-- A new Lua session sees the changed Steam timestamp.
+layer.workshopTimes, layer.checkedWorkshopIds = {}, {}
+layer:load({a}); assert(scanCount == 3 and layer.cache.A.updatedTime == 101 and queryCount == 2)
 assert(layer.cache.B ~= nil, 'inactive cache entry lost')
 -- Force a cache reload, proving all entries and timestamps were serialized.
 layer.cacheLoaded = false; layer.cache = {}; layer:load({a})
 assert(scanCount == 3 and layer.cache.B.lastAnalyzedTime == now)
+-- Simulate a new session without Steam: the failed query is not repeated.
+layer.workshopTimes, layer.checkedWorkshopIds = {}, {}
 steam = false; now = now + 86400
 layer:load({a,b}); assert(scanCount == 3, 'exactly one day is not older than one day')
-now = now + 1; layer:load({a,b}); assert(scanCount == 5)
+local failedQueryCount = queryCount
+now = now + 1; layer:load({a,b}); assert(scanCount == 5 and queryCount == failedQueryCount)
 assert(layer.cache.A.updatedTime == 101, 'offline scan must retain Steam time')
 -- A failed scan cannot destroy an existing snapshot or mark it fresh.
 now = now + 86401
@@ -167,3 +176,23 @@ loadedMods.B = true
 layer:load({b})
 assert(#layer.notLoaded == 0 and layer.cache.B.complete == false)
 print('Loaded mod warning tests passed')
+
+-- New IDs are queried once without discarding earlier timestamps.
+local x, y = row('X', '555'), row('Y', '666')
+loadedMods.X, loadedMods.Y = true, true
+steam = { ['555'] = 10, ['666'] = 20 }
+layer.workshopTimes, layer.checkedWorkshopIds = {}, {}
+local startQueries = queryCount
+layer:load({x}); assert(queryCount == startQueries + 1 and layer.workshopTimes['555'] == 10)
+layer:load({x,y}); assert(queryCount == startQueries + 2 and #activeQueries == 1 and activeQueries[1] == '666')
+assert(layer.workshopTimes['555'] == 10 and layer.workshopTimes['666'] == 20)
+layer:load({y,x}); assert(queryCount == startQueries + 2)
+-- Obsolete signature fields are ignored on read and removed on the next save.
+local cachePath = 'test/modsFilesCache.txt'
+files[cachePath] = files[cachePath]:gsub('%[X%]', '[X]\nsignature=legacy-value')
+layer.cacheLoaded = false
+layer:load({x,y})
+assert(not files[cachePath]:find('signature=legacy%-value'))
+assert(not files[cachePath]:find('\nsignature='))
+assert(layer.cache.X and layer.cache.Y)
+print('Session Workshop cache and signature migration tests passed')

@@ -27,7 +27,8 @@ MLOS_ModsFiles.data = {}          -- active mod data keyed by modId
 MLOS_ModsFiles.cache = {}
 MLOS_ModsFiles.notLoaded = {}     -- modIds whose analysis is incomplete (not loaded in this session / unreadable)
 MLOS_ModsFiles.staleMods = {}     -- modIds that were (re)scanned in the last run
-MLOS_ModsFiles.workshopTimes = {} -- workshop id -> update timestamp from the last Steam answer
+MLOS_ModsFiles.workshopTimes = {} -- workshop id -> update timestamp for this Lua session
+MLOS_ModsFiles.checkedWorkshopIds = {} -- queried IDs, including missing/failed results
 
 
 --================================================
@@ -83,7 +84,6 @@ end
 ---@return string
 local function cacheDataToText(modId, data)
     local lines = {}
-    table.insert(lines, "signature=" .. tostring(data.signature or ""))
     table.insert(lines, "complete=" .. tostring(data.complete == true))
     if data.updatedTime then table.insert(lines, "updatedTime=" .. tostring(data.updatedTime)) end
     if data.lastAnalyzedTime then table.insert(lines, "lastAnalyzedTime=" .. tostring(data.lastAnalyzedTime)) end
@@ -108,9 +108,7 @@ local function cacheLineToData(addTo, line)
     local key, value = line:match('^%s*(.-)%s*=%s*(.-)%s*$')
     if key == nil then return end
     key = key:lower()
-    if key == "signature" then
-        addTo.signature = value
-    elseif key == "updatedtime" then
+    if key == "updatedtime" then
         addTo.updatedTime = tonumber(value)
     elseif key == "lastanalyzedtime" then
         addTo.lastAnalyzedTime = tonumber(value)
@@ -204,6 +202,35 @@ local function fetchWorkshopTimes(modList)
         end
     end)
     return ok and times or nil
+end
+
+--- Query each Workshop ID at most once per Lua session. Previously unavailable
+--- IDs stay unknown until the next session; newly activated IDs are queried.
+local function updateWorkshopTimes(self, modList)
+    if self.fetchInProgress then
+        local finished = CM.waitUntil(function() return not self.fetchInProgress end,
+            { timeoutMs = STEAM_TIMEOUT_MS + 1000 })
+        if not finished then return end
+    end
+    local pending, ids, seen = {}, {}, {}
+    for _, row in ipairs(modList) do
+        local id = row.item and workshopId(row.item)
+        if id and not self.checkedWorkshopIds[id] and not seen[id] then
+            pending[#pending + 1] = row
+            ids[#ids + 1] = id
+            seen[id] = true
+        end
+    end
+    if #ids == 0 then return end
+
+    self.fetchInProgress = true
+    local times = fetchWorkshopTimes(pending)
+    self.fetchInProgress = false
+    self.steamUnavailable = times == nil
+    for _, id in ipairs(ids) do self.checkedWorkshopIds[id] = true end
+    if times then
+        for _, id in ipairs(ids) do self.workshopTimes[id] = times[id] end
+    end
 end
 
 -- #region ========== ZombieBuddy bridge =========
@@ -369,6 +396,7 @@ function MLOS_ModsFiles:getData(modList, reread)
         end,
         onFinish = function() CM:setProgress(1, "[ModsFiles] finished") end,
         onError = function(_, err)
+            self.fetchInProgress = false
             self.error = tostring(err)
             print("[MLOS] ModsFiles analysis failed: " .. self.error)
         end
@@ -384,9 +412,7 @@ function MLOS_ModsFiles:load(modList, reread)
         self.cache = cache or {}
         self.cacheLoaded = true
     end
-    local times = fetchWorkshopTimes(modList)
-    self.steamUnavailable = times == nil
-    self.workshopTimes = times or {}
+    updateWorkshopTimes(self, modList)
     local now = getTimestamp()
     local loadedPaths
     local useBuddy = buddyAvailable()
