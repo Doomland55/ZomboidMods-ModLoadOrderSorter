@@ -6,7 +6,7 @@ require "ISUI/ISToolTip"
 require "ISUI/ISModalDialog"
 local core = require('REfRigERatoR_ModLoadOrderSorter/Core/Core')
 local utils = require('REfRigERatoR_ModLoadOrderSorter/Core/1_Utils')
-local sorter = require('REfRigERatoR_ModLoadOrderSorter/Core/2_SortingCore')
+local sorter = require('REfRigERatoR_ModLoadOrderSorter/Core/SortingCore')
 local scrollExt = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/ScrollExtensions')
 local popup = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/WarningPopup')
 

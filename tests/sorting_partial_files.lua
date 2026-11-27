@@ -10,7 +10,10 @@ local core = { layers = {}, rawCategoryOrder = {'undefined'}, categoryOrder = {u
 package.loaded[prefix .. 'Core/1_Utils'] = utils
 package.loaded[prefix .. 'Core/Core'] = core
 function getText(key) return key end
-local sorter = dofile(base .. 'Core/2_SortingCore.lua')
+package.loaded[prefix .. 'Core/BinaryHeap'] = dofile(base .. 'Core/BinaryHeap.lua')
+package.loaded[prefix .. 'Core/SortingData'] = dofile(base .. 'Core/SortingData.lua')
+package.loaded[prefix .. 'Core/SortingGraph'] = dofile(base .. 'Core/SortingGraph.lua')
+local sorter = dofile(base .. 'Core/SortingCore.lua')
 local mods = {{item={modId='A'}}, {item={modId='B'}}}
 core.layers.ModsFiles = { data = {
     A={ complete=false, modifications={{className='Class',methodName='method',isHook=false}} },
