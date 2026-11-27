@@ -13,27 +13,27 @@ ModManagerLayer.data = {} -- data[modId] = { category = ... }
 
 
 --- Layer entry point, see LayerManager.
-function ModManagerLayer:load(ctx)
+function ModManagerLayer:load(modList)
     local data = {}
-    -- for i, row in ipairs(ctx.mods) do
+    -- for i, row in ipairs(modList) do
     --     data[row.item.modId] = { ... read from ModListData ... }
-    --     ctx:step(i, #ctx.mods)
+    --     -- Report progress using CoroutineManager when implemented.
     -- end
     self.data = data
 end
 
 
-function ModManagerLayer:onStart(ctx)
+function ModManagerLayer:onStart()
     return nil
 end
 
 
-function ModManagerLayer:onProcess(ctx)
+function ModManagerLayer:onProcess()
     return nil
 end
 
 
-function ModManagerLayer:onFinish(ctx)
+function ModManagerLayer:onFinish()
     return nil
 end
 

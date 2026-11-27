@@ -80,9 +80,9 @@ end
 ---@return table edges, table enabled, table orderIndex
 function MLOS_SortingCore:buildGraph(modsList, activeRules)
 	local layers = core.layers
-	local modInfo = (layers.modInfo and layers.modInfo.data) or {}
-	local modFiles = (layers.modFiles and layers.modFiles.data) or {}
-	local rules = activeRules or (layers.sortingRules and layers.sortingRules.data) or {}
+	local modInfo = (layers.ModsInfo and layers.ModsInfo.data) or {}
+	local modFiles = (layers.ModsFiles and layers.ModsFiles.data) or {}
+	local rules = activeRules or (layers.SortingRules and layers.SortingRules.data) or {}
 
 	local enabled = {}
 	local orderIndex = {}
@@ -267,7 +267,7 @@ function MLOS_SortingCore:sort(modsList, activeRules)
 	local edges, enabled, _, catIndex = self:buildGraph(modsList, activeRules)
 	self.lastEdges = edges
 	self.brokenEdges = {}
-	local modInfo = (core.layers.modInfo and core.layers.modInfo.data) or {}
+	local modInfo = (core.layers.ModsInfo and core.layers.ModsInfo.data) or {}
 
 	local indegree = {}
 	for id in pairs(enabled) do indegree[id] = 0 end
@@ -283,7 +283,7 @@ function MLOS_SortingCore:sort(modsList, activeRules)
 	end
 
 	-- Rank ready nodes by global position, promoted category and category position.
-	local rules = activeRules or (core.layers.sortingRules and core.layers.sortingRules.data) or {}
+	local rules = activeRules or (core.layers.SortingRules and core.layers.SortingRules.data) or {}
 	local function better(a, b)
 		local ag, ac, ap = positionRank(a, rules, catIndex)
 		local bg, bc, bp = positionRank(b, rules, catIndex)
@@ -400,8 +400,8 @@ end
 ---@param activeRules table|nil working rules; saved rules are used by default
 ---@return table list of { severity, layer, title, message }
 function MLOS_SortingCore:getIncompatibleWarnings(modsList, activeRules)
-	local info = (core.layers.modInfo and core.layers.modInfo.data) or {}
-	local rules = activeRules or (core.layers.sortingRules and core.layers.sortingRules.data) or {}
+	local info = (core.layers.ModsInfo and core.layers.ModsInfo.data) or {}
+	local rules = activeRules or (core.layers.SortingRules and core.layers.SortingRules.data) or {}
 	local enabled = {}
 	for _, val in ipairs(modsList) do enabled[val.item.modId] = true end
 
@@ -430,8 +430,8 @@ end
 ---@param modsList table modList.items
 ---@return table status by mod ID (purple, red or yellow)
 function MLOS_SortingCore:validate(modsList, activeRules)
-	local info = (core.layers.modInfo and core.layers.modInfo.data) or {}
-	local rules = activeRules or (core.layers.sortingRules and core.layers.sortingRules.data) or {}
+	local info = (core.layers.ModsInfo and core.layers.ModsInfo.data) or {}
+	local rules = activeRules or (core.layers.SortingRules and core.layers.SortingRules.data) or {}
 	local _, enabled, index, cats = self:buildGraph(modsList, rules)
 	local status = {}
 	local severity = { yellow = 1, red = 2, purple = 3 }

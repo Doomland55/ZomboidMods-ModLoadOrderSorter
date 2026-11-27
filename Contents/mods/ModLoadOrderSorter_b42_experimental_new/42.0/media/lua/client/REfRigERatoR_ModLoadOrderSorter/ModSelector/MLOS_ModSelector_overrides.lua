@@ -100,7 +100,17 @@ local function UpdateLayers(self)
     core.layersManager:initialise(self.modList.items, {
         onComplete = function()
             self.MLOS_ProgressBar:setVisible(false)
-            self.autoButton.enable = true
+            local filesLayer = core.layers.ModsFiles
+            self.autoButton.enable = not (filesLayer and filesLayer.error)
+            if self.warningPopup and filesLayer then
+                if filesLayer.error then
+                    self.warningPopup:addMessage("ModsFiles", filesLayer.error, "ModsFiles", "CRITICAL")
+                else
+                    for _, warning in ipairs(filesLayer:getWarnings()) do
+                        self.warningPopup:addMessage(warning.title, warning.message, warning.layer, warning.severity)
+                    end
+                end
+            end
             -- self:showLayerWarnings()
             -- self:MLOS_refresh()
         end,

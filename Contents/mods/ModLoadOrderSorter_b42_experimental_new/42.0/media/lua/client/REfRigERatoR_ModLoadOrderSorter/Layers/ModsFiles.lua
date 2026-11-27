@@ -4,10 +4,10 @@
 ---
 --- One pipeline handles every mod (MLOS_ModsFiles:load):
 ---   1. read the cache file (modsFilesCache.txt) once per session or on reread;
----   2. ask Steam for workshop update timestamps (part of the cache signature);
+---   2. ask Steam for active Workshop items' update timestamps;
 ---   3. per mod: take the file list and contents from the optional ZombieBuddy
 ---      bridge (any enabled mod can be read) or, without it, from the lua files
----      loaded in this session; parse only when the cache entry is not fresh;
+---      loaded in this session; scan only when the cache entry is not fresh;
 ---   4. save the cache.
 --- Enabled mods that could not be analysed are reported via self.notLoaded.
 ---
@@ -17,17 +17,14 @@ local CM = require("REfRigERatoR_ModLoadOrderSorter/Core/CorutineManager.lua")
 local Parser = require('REfRigERatoR_ModLoadOrderSorter/Layers/ModsFilesParser')
 
 local cacheFileExists = cacheFileExists
-local listFilesInModDirectory = listFilesInModDirectory
 
 local CACHE_FILE = "modsFilesCache.txt"
-local LUA_DIR = "media/lua"
 local STEAM_TIMEOUT_MS = 10000 -- how long to wait for the workshop details before using cached timestamps
 
 
 local MLOS_ModsFiles = {}
-MLOS_ModsFiles.data = {}          -- data[modId] = { rootDir, files={...}, modifications={...}, version, updatedTime, lastCheckedTime, fsSignature, complete }
+MLOS_ModsFiles.data = {}          -- active mod data keyed by modId
 MLOS_ModsFiles.cache = {}
--- MLOS_ModsFiles.cache = nil        -- raw cache read from file
 MLOS_ModsFiles.notLoaded = {}     -- modIds whose analysis is incomplete (not loaded in this session / unreadable)
 MLOS_ModsFiles.staleMods = {}     -- modIds that were (re)scanned in the last run
 MLOS_ModsFiles.workshopTimes = {} -- workshop id -> update timestamp from the last Steam answer
@@ -37,41 +34,10 @@ MLOS_ModsFiles.workshopTimes = {} -- workshop id -> update timestamp from the la
 --      Cache helpers
 --================================================
 
---- Best-effort workshop update timestamp (seconds) of a mod.
---- Uses querySteamWorkshopItemDetails when the game build exposes it to Lua;
---- returns nil for local mods or builds without the API.
----@param modInfo table ModInfo object (item.modInfo)
----@return string|nil
-local function getWorkshopUpdateTimestamp(modInfo)
-    local ok, id = pcall(utils.getWorkshopId, utils, modInfo)
-    if ok and id then return MLOS_ModsFiles.workshopTimes and MLOS_ModsFiles.workshopTimes[tostring(id)] end
-end
-
---- Cheap signature of a mod: mod.info version + number of lua files +
---- workshop update timestamp (when available). Used to detect changed mods
---- without reading every file.
----@param modId string
----@param modInfo table|nil ModInfo object of the mod
----@return string
-local function getModSignature(modId, modInfo)
-    local layer = core.layers['ModsFiles']
-    local version = layer and layer[modId] and layer[modId].version or "0"
-
-    local updateTime = modInfo and getWorkshopUpdateTimestamp(modInfo) or ""
-
-    return tostring(version) .. "|" .. tostring(updateTime or "")
-end
-
-
----@param modId string
----@return table list of relative lua file paths of the mod (from disk)
-function MLOS_ModsFiles:listModLuaFiles(modId)
-    local result = {}
-    local ok, files = pcall(listFilesInModDirectory, modId, LUA_DIR)
-    if ok and files then
-        result = utils:toKahluaTable(files)
-    end
-    return result
+--- Resolve Workshop IDs from the ModInfo object used by the load-order UI.
+local function workshopId(item)
+    local ok, id = pcall(utils.getWorkshopId, utils, item.modInfo)
+    if ok and id and tostring(id):match("^%d+$") then return tostring(id) end
 end
 
 --- Paths of all lua files loaded in this Lua session, with forward slashes.
@@ -119,6 +85,8 @@ local function cacheDataToText(modId, data)
     local lines = {}
     table.insert(lines, "signature=" .. tostring(data.signature or ""))
     table.insert(lines, "complete=" .. tostring(data.complete == true))
+    if data.updatedTime then table.insert(lines, "updatedTime=" .. tostring(data.updatedTime)) end
+    if data.lastAnalyzedTime then table.insert(lines, "lastAnalyzedTime=" .. tostring(data.lastAnalyzedTime)) end
     if data.fsSignature then table.insert(lines, "fssignature=" .. data.fsSignature) end
     if not utils:tableIsEmpty(data.files) then
         table.insert(lines, "files=" .. table.concat(data.files, ","))
@@ -142,6 +110,10 @@ local function cacheLineToData(addTo, line)
     key = key:lower()
     if key == "signature" then
         addTo.signature = value
+    elseif key == "updatedtime" then
+        addTo.updatedTime = tonumber(value)
+    elseif key == "lastanalyzedtime" then
+        addTo.lastAnalyzedTime = tonumber(value)
     elseif key == "fssignature" then
         addTo.fsSignature = value
     elseif key == "complete" then
@@ -170,10 +142,9 @@ end
 
 --- Saves current layer data to the cache file
 function MLOS_ModsFiles:saveCache()
-    if utils:tableIsEmpty(self.data) then return end
     local path = utils:joinpath(core.MLOS_LAYERS_ROOT, CACHE_FILE)
     print("[MLOS] Saving mods files cache: " .. path)
-    return core:saveTxtFile(path, self.data, cacheDataToText)
+    return core:saveTxtFile(path, self.cache, cacheDataToText)
 end
 
 --- Reads the cache file
@@ -182,7 +153,9 @@ function MLOS_ModsFiles:readCache()
     local path = utils:joinpath(core.MLOS_LAYERS_ROOT, CACHE_FILE)
     if cacheFileExists(path) ~= true then return {} end
     print("[MLOS] Reading mods files cache: " .. path)
-    return core:readTxtFile(path, cacheLineToData) or {}
+    local cache = core:readTxtFile(path, cacheLineToData)
+    if not cache then error("Cannot read existing cache " .. path) end
+    return cache
 end
 -- #endregion
 
@@ -194,36 +167,44 @@ end
 --- Workshop update timestamps by workshop id. Yields until Steam answers or the
 --- timeout passes; returns nil when there is no usable answer.
 ---@return table|nil
-local function fetchWorkshopTimes()
+local function fetchWorkshopTimes(modList)
     if type(querySteamWorkshopItemDetails) ~= "function" or type(getSteamWorkshopItemIDs) ~= "function" then return nil end
+    -- B42 returns a fresh Java ArrayList; reuse it to pass only active IDs.
+    local ok, ids = pcall(getSteamWorkshopItemIDs)
+    if not ok or not ids then return nil end
+    local seen = {}
+    local built = pcall(function()
+        ids:clear()
+        for _, row in ipairs(modList) do
+            local id = row.item and workshopId(row.item)
+            if id and not seen[id] then ids:add(id); seen[id] = true end
+        end
+    end)
+    if not built then return nil end
+    if ids:size() == 0 then return {} end
 
-    local ids = getSteamWorkshopItemIDs()
-    if not ids then return nil end
-
-    -- The game calls back with (arg, "Completed", details) or (arg, "NotCompleted").
     local status, details
     local function onDetails(queryStatus, info)
-        if status == nil and (queryStatus == "Completed" or queryStatus == "NotCompleted") then
-            status, details = queryStatus, info
-        end
+        if status ~= "Completed" then status, details = queryStatus, info end
     end
-    querySteamWorkshopItemDetails(ids, onDetails)
-
+    -- arg1 is nil, so the callback receives (status, details).
+    ok = pcall(querySteamWorkshopItemDetails, ids, onDetails, nil)
+    if not ok then return nil end
     CM.setProgress(0.1, "[ModsFiles] fetching workshop times ...")
-    local ok, _ = CM.waitUntil(function() return status == "Completed" end,
-        { timeoutMs = STEAM_TIMEOUT_MS, intervalMs = 20})
+    local finished = CM.waitUntil(function() return status == "Completed" end,
+        { timeoutMs = STEAM_TIMEOUT_MS, intervalMs = 20 })
+    if not finished or status ~= "Completed" or not details then return nil end
 
-    if not ok or status ~= "Completed" or not details then return nil end
-    CM.setProgress(0.2, "[ModsFiles] fetching success!")
-    
     local times = {}
-    for i = 0, details:size() - 1 do
-        local detail = details:get(i)
-        times[tostring(detail:getIDString())] = tostring(detail:getTimeUpdated())
-    end
-    return times
+    ok = pcall(function()
+        for i = 0, details:size() - 1 do
+            local detail = details:get(i)
+            local time = tonumber(detail:getTimeUpdated())
+            if time and time > 0 then times[tostring(detail:getIDString())] = time end
+        end
+    end)
+    return ok and times or nil
 end
-
 
 -- #region ========== ZombieBuddy bridge =========
 
@@ -244,7 +225,7 @@ end
 --- Starts the Java scan of one mod and yields until it is finished. One mod at
 --- a time keeps the bridge snapshot bounded.
 ---@return table|nil { files, fingerprint, read = function(index) } or nil when the bridge failed for this mod
-function MLOS_ModsFiles:openBuddySnapshot(ctx, modId)
+function MLOS_ModsFiles:openBuddySnapshot(modId)
     local ok, job = pcall(MLOS_BuddyBegin, modId)
     if not ok or not job then return nil end
     self.buddyJob = job
@@ -252,7 +233,7 @@ function MLOS_ModsFiles:openBuddySnapshot(ctx, modId)
     local state
     repeat
         ok, state = pcall(MLOS_BuddyState, job)
-        if ok and state == "pending" then ctx:wait() end
+        if ok and state == "pending" then CM.sleep(20) end
     until not ok or state ~= "pending"
     if not ok or state ~= "ready" then return nil end
 
@@ -316,7 +297,7 @@ end
 ---@param readSource function|nil (index) -> file text; nil = read with getModFileReader
 ---@return table modifications
 ---@return boolean failed true when at least one file could not be read
-local function parseFiles(ctx, modId, files, readSource)
+local function parseFiles(modId, files, readSource)
     local modifications, failed = {}, false
     for index, path in ipairs(files) do
         local reader
@@ -328,196 +309,142 @@ local function parseFiles(ctx, modId, files, readSource)
             reader = ok and fileReader or nil
         end
         if reader then
-            appendModifications(modifications, path, Parser.parse(reader))
+            local ok, parsed = pcall(Parser.parse, reader)
+            if ok then
+                appendModifications(modifications, path, parsed)
+            else
+                pcall(function() reader:close() end)
+                print("[MLOS] Cannot parse " .. tostring(modId) .. "/" .. tostring(path) .. ": " .. tostring(parsed))
+                failed = true
+            end
         else
             failed = true
         end
-        ctx:step()
+        CM.checkpoint()
     end
     return modifications, failed
 end
 
--- Older caches have no filesystem fingerprint. They are reusable only if their
--- complete file list matches the bridge snapshot and the normal signature matches.
-local function sameFiles(a, b)
-    if not a then return #b == 0 end
-    if #a ~= #b then return false end
-    local seen = {}
-    for _, name in ipairs(a) do seen[name] = (seen[name] or 0) + 1 end
-    for _, name in ipairs(b) do
-        if not seen[name] or seen[name] == 0 then return false end
-        seen[name] = seen[name] - 1
+local MAX_CACHE_AGE = 24 * 60 * 60
+
+-- Never call the scanner to check freshness: even enumerating all files can be
+-- expensive. Unknown/old cache formats are rescanned once.
+local function needsScan(cached, updatedTime, now)
+    if not cached or not cached.lastAnalyzedTime then return true end
+    if updatedTime then
+        return not cached.updatedTime or updatedTime > cached.updatedTime
     end
-    return true
+    local age = now - cached.lastAnalyzedTime
+    return age < 0 or age > MAX_CACHE_AGE
 end
 
---- Signature for the cache check. Without a Steam answer the cached timestamp
---- is kept, so a failed query does not invalidate every cache entry.
-function MLOS_ModsFiles:getSignature(item, cached)
-    local signature = getModSignature(item.modId, item.modInfo)
-    if self.steamUnavailable and cached and cached.signature then
-        local oldTime = cached.signature:match("|([^|]*)$")
-        if oldTime then signature = signature:gsub("|[^|]*$", "|" .. oldTime) end
-    end
-    return signature
+--- Scan accessible files. A loaded-file snapshot is necessarily incomplete:
+--- it cannot prove that all of a mod's Lua files were loaded in this session.
+local function scanLoaded(item, loadedPaths)
+    local modInfo = item.modInfo
+    local dir = modInfo:getDir()
+    local files = dir and listLoadedModFiles(item.modId, dir, modInfo, loadedPaths) or {}
+    if #files == 0 then return nil end
+    local changes, failed = parseFiles(item.modId, files)
+    if failed then return nil end
+    return { rootDir = dir, files = files, modifications = changes, complete = false }
 end
 
---- Bridge mode: the Java worker listed and read every lua file of the mod,
---- whether it is loaded in this session or not.
----@return table|nil data of the mod; nil when a file could not be read (the caller falls back)
----@return boolean rescanned
-local function scanSnapshot(ctx, item, cached, signature, snapshot)
-    local files = snapshot.files
-    local result = {
-        rootDir = item.modInfo:getDir(),
-        files = files,
-        modifications = {},
-        signature = signature,
-        fsSignature = snapshot.fingerprint,
-        complete = true
-    }
-    local fresh = cached ~= nil and cached.complete == true and cached.signature == signature
-        and sameFiles(cached.files, files)
-        and (not cached.fsSignature or cached.fsSignature == snapshot.fingerprint)
-    if fresh then
-        if #files > 0 then result.modifications = cached.modifications or {} end
-        return result, false
+function MLOS_ModsFiles:scanMod(item, loadedPaths, useBuddy)
+    if useBuddy then
+        local snapshot = self:openBuddySnapshot(item.modId)
+        if snapshot then
+            local changes, failed = parseFiles(item.modId, snapshot.files, snapshot.read)
+            self:releaseBuddyJob()
+            if not failed then
+                return { files = snapshot.files, modifications = changes,
+                    fsSignature = snapshot.fingerprint, complete = true }
+            end
+        else
+            self:releaseBuddyJob()
+        end
+        print("[MLOS] ZombieBuddy scan failed for " .. tostring(item.modId) .. "; using loaded files")
     end
-
-    local modifications, failed = parseFiles(ctx, item.modId, files, snapshot.read)
-    if failed then return nil, true end
-    result.modifications = modifications
-    return result, true
-end
-
---- Normal mode: files are known only for mods loaded in this Lua session, the
---- rest keeps whatever the cache has. `bridgeFailed` marks a mod whose bridge
---- scan failed - a failed disk enumeration never becomes a complete or empty mod.
----@return table data of the mod
----@return boolean incomplete the mod must be reported in notLoaded
----@return boolean rescanned
-local function scanLoaded(ctx, item, cached, signature, loadedPaths, bridgeFailed)
-    local modId = item.modId
-    local dir = item.modInfo:getDir()
-    dir = dir and dir:gsub("[\\/]", getFileSeparator())
-    local loadedFiles = dir and listLoadedModFiles(modId, dir, item.modInfo, loadedPaths) or {}
-    local isLoaded = #loadedFiles > 0
-    -- for loaded mods the authoritative list comes from getLoadedLua(), for the rest - from disk
-    local files = isLoaded and loadedFiles or MLOS_ModsFiles:listModLuaFiles(modId)
-    local result = {
-        rootDir = dir,
-        files = files,
-        modifications = (cached and cached.modifications) or {},
-        signature = signature,
-        complete = false
-    }
-
-    if #files == 0 and not bridgeFailed then
-        -- the mod has no lua files at all (textures/recipes/etc. only):
-        -- nothing to analyse, so it is complete by definition
-        result.complete = true
-        return result, false, false
-    end
-
-    if not bridgeFailed and cached ~= nil and cached.complete == true and cached.signature == signature then
-        -- cache is up to date: use it as is, no rescan needed
-        result.files = cached.files or files
-        result.fsSignature = cached.fsSignature
-        result.complete = true
-        return result, not isLoaded, false
-    end
-
-    -- contents can be read only for loaded mods
-    local failed = false
-    if isLoaded then
-        result.modifications, failed = parseFiles(ctx, modId, files)
-        result.complete = not failed and not bridgeFailed
-    end
-    return result, not isLoaded or failed or bridgeFailed, true
-end
-
----@return table data of the mod
----@return boolean incomplete
----@return boolean rescanned
-function MLOS_ModsFiles:scanMod(ctx, item, loadedPaths, useBuddy)
-    local cached = self.cache[item.modId]
-    local signature = self:getSignature(item, cached)
-    if not useBuddy then
-        return scanLoaded(ctx, item, cached, signature, loadedPaths, false)
-    end
-
-    local result, rescanned
-    local snapshot = self:openBuddySnapshot(ctx, item.modId)
-    if snapshot then result, rescanned = scanSnapshot(ctx, item, cached, signature, snapshot) end
-    self:releaseBuddyJob()
-    if result then return result, false, rescanned end
-
-    print("[MLOS] ZombieBuddy scan failed for " .. tostring(item.modId) .. "; using legacy data")
-    return scanLoaded(ctx, item, cached, signature, loadedPaths, true)
+    return scanLoaded(item, loadedPaths)
 end
 
 --================================================
 --      Layer API
 --================================================
--- function MLOS_ModsFiles:getData(modList, reread)
--- 	CM.run(self.load, {
--- 		args = {self, modList, reread},
--- 		onStart = self.onStart,
--- 		onFinish = self.onFinish
--- 	})
--- end
-
--- function MLOS_ModsFiles.onStart() CM:setProgress(0, "[ModsFiles] processing ...") end
--- function MLOS_ModsFiles.onFinish() CM:setProgress(1, "[ModsFiles] finished ...") end
-
-
---- Layer entry point, see LayerManager.
-function MLOS_ModsFiles:load(modList, reread)
-    if utils:tableIsEmpty(self.data) or reread == true then
-        self.data = self:readCache() or {}
-        self.cache = self.data.modsFilesLayer
-    end
-
-    -- get cache data and active mods differnce
-    local workshopIdToId = {}
-    local missing_workshopIds = {}
-    for i=1, #modList do
-        local item = modList[i].item
-        local cachedData = self.data[item.modId]
-        if not cachedData or cachedData.lastCheckedTime then
-            local wId = item:getWorkshopId()
-            if wId then
-                missing_workshopIds[#missing_workshopIds + 1] = wId
-                workshopIdToId[wId] = item.modId
-            end
+function MLOS_ModsFiles:getData(modList, reread)
+    return CM.run(self.load, {
+        name = "ModsFiles", args = { self, modList, reread },
+        onStart = function()
+            self.error = nil
+            CM:setProgress(0, "[ModsFiles] processing ...")
+        end,
+        onFinish = function() CM:setProgress(1, "[ModsFiles] finished") end,
+        onError = function(_, err)
+            self:cancel()
+            self.error = tostring(err)
+            print("[MLOS] ModsFiles analysis failed: " .. self.error)
         end
+    })
+end
+
+--- Load the whole persistent cache before requesting Steam. Only active mods
+--- are exposed in data; inactive entries stay in cache and are written back.
+function MLOS_ModsFiles:load(modList, reread)
+    if not self.cacheLoaded or reread then
+        local ok, cache = pcall(self.readCache, self)
+        if not ok then error("[MLOS] Cannot read ModsFiles cache: " .. tostring(cache)) end
+        self.cache = cache or {}
+        self.cacheLoaded = true
     end
-        
-
-
-
-    local times = fetchWorkshopTimes()
+    local times = fetchWorkshopTimes(modList)
     self.steamUnavailable = times == nil
     self.workshopTimes = times or {}
-
-    local loadedPaths = getLoadedLuaPaths()
+    local now = getTimestamp()
+    local loadedPaths
     local useBuddy = buddyAvailable()
     local data, notLoaded, stale = {}, {}, {}
     for i, row in ipairs(modList) do
         local item = row.item
-        if item then
-            local result, incomplete, rescanned = self:scanMod(ctx, item, loadedPaths, useBuddy)
-            data[item.modId] = result
-            if incomplete then notLoaded[#notLoaded + 1] = item.modId end
-            if rescanned then stale[#stale + 1] = item.modId end
+        if item and item.modId and item.modInfo then
+            local id = item.modId
+            local cached = self.cache[id]
+            local wid = workshopId(item)
+            local updatedTime = wid and self.workshopTimes[wid] or nil
+            local result = cached
+            if needsScan(cached, updatedTime, now) then
+                if not loadedPaths then loadedPaths = getLoadedLuaPaths() end
+                local scanned = self:scanMod(item, loadedPaths, useBuddy)
+                if scanned and cached and cached.complete and not scanned.complete then
+                    -- Do not replace a complete snapshot with a partial one.
+                    scanned = nil
+                end
+                if scanned then
+                    scanned.lastAnalyzedTime = getTimestamp()
+                    -- Without Steam retain the old comparison point, not a guessed one.
+                    scanned.updatedTime = updatedTime or (cached and cached.updatedTime)
+                    self.cache[id] = scanned
+                    result = scanned
+                    stale[#stale + 1] = id
+                else
+                    print("[MLOS] Could not analyse " .. tostring(id) .. "; preserving cache")
+                    notLoaded[#notLoaded + 1] = id
+                end
+            end
+            if result then
+                data[id] = result
+                if not result.complete and notLoaded[#notLoaded] ~= id then
+                    notLoaded[#notLoaded + 1] = id
+                end
+            end
         end
-        ctx:step(i, #ctx.mods)
+        CM.checkpoint(i / math.max(#modList, 1), "[ModsFiles] " .. tostring(i) .. "/" .. tostring(#modList))
     end
-
     indexFileTargets(data)
     self.data, self.notLoaded, self.staleMods = data, notLoaded, stale
-    self:saveCache()
+    local ok, saved = pcall(self.saveCache, self)
+    if not ok or not saved then error("[MLOS] Failed to save ModsFiles cache: " .. tostring(saved)) end
 end
+
 
 --- Called by the manager when the analysis is interrupted or fails.
 function MLOS_ModsFiles:cancel()
