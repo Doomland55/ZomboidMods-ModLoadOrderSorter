@@ -100,18 +100,9 @@ local function UpdateLayers(self)
     core.layersManager:initialise(self.modList.items, {
         onComplete = function()
             self.MLOS_ProgressBar:setVisible(false)
-            local filesLayer = core.layers.ModsFiles
-            self.autoButton.enable = not (filesLayer and filesLayer.error)
-            if self.warningPopup and filesLayer then
-                if filesLayer.error then
-                    self.warningPopup:addMessage("ModsFiles", filesLayer.error, "ModsFiles", "CRITICAL")
-                else
-                    for _, warning in ipairs(filesLayer:getWarnings()) do
-                        self.warningPopup:addMessage(warning.title, warning.message, warning.layer, warning.severity)
-                    end
-                end
-            end
-            -- self:showLayerWarnings()
+            -- A failed layer is reported, but available data can still be used.
+            self.autoButton.enable = true
+            self:showLayerWarnings()
             -- self:MLOS_refresh()
         end,
     })
@@ -173,8 +164,11 @@ end
 function ModLoadOrderPanelOverride:showLayerWarnings()
     if not self.warningPopup then return end
     local warnings = core.layersManager:getWarnings()
-    if core.layersManager:isSuccessful() then
-        for _, w in ipairs(sortingCore:getIncompatibleWarnings(self.modList.items)) do warnings[#warnings + 1] = w end
+    local ok, incompatible = pcall(sortingCore.getIncompatibleWarnings, sortingCore, self.modList.items)
+    if ok then
+        for _, w in ipairs(incompatible) do warnings[#warnings + 1] = w end
+    else
+        print("[MLOS] Could not collect incompatible mod warnings: " .. tostring(incompatible))
     end
     for _, w in ipairs(warnings) do
         self.warningPopup:addMessage(w.title, w.message, w.layer, w.severity)
@@ -185,11 +179,12 @@ end
 -- Topological auto sort: builds the dependency graph from all layers,
 -- sorts the mods and applies the new order (with a backup file)
 function ModLoadOrderPanelOverride:autoSort()
-    local mlos_core = core
-    -- if not core.layersManager:isSuccessful() then
-    --     if self.warningPopup then self.warningPopup:addWarning(getText("UI_MLOS_Layers_NotReady"), getText("UI_MLOS_Layers_NotReady_Msg"), "Layers") end
-    --     return
-    -- end
+    if not core.layersManager:isCompleted() then
+        if self.warningPopup then
+            self.warningPopup:addWarning(getText("UI_MLOS_Layers_NotReady"), getText("UI_MLOS_Layers_NotReady_Msg"), "Layers")
+        end
+        return
+    end
     local sortedIds = sortingCore:sort(self.modList.items)
     sortingCore:applyOrder(self.modList, sortedIds)
 

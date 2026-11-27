@@ -93,6 +93,7 @@ function Task:elapsedMs()
 end
 
 local function isTask(v) return type(v) == "table" and getmetatable(v) == Task end
+CM.isTask = isTask
 
 -- ============================================================
 --  Запуск и управление задачами (вызывается снаружи)

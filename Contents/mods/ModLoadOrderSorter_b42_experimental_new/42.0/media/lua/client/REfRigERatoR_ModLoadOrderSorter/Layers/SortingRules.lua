@@ -68,12 +68,18 @@ function MLOS_SortingRules:readSortingRules(fileName)
     print("MLOS - Reading sorting rules: ", rulesFile)
     -- Migrate the legacy file once without prepending the root twice.
     if cacheFileExists(rulesFile) ~= true then
-        if cacheFileExists(rulesName) == false then self:saveSortingRules(); return self.data or {} end
-        local old = core:readTxtFile(rulesName, function(addTo, line) core:getDataFromString(line, addTo) end) or {}
-        self:saveSortingRules(old)
+        if cacheFileExists(rulesName) == false then
+            if not self:saveSortingRules() then error("Cannot create sorting rules: " .. rulesFile) end
+            return self.data or {}
+        end
+        local old = core:readTxtFile(rulesName, function(addTo, line) core:getDataFromString(line, addTo) end)
+        if not old then error("Cannot read sorting rules: " .. rulesName) end
+        if not self:saveSortingRules(old) then error("Cannot migrate sorting rules: " .. rulesFile) end
         return old
     end
-    return core:readTxtFile(rulesFile, function(addTo, line) core:getDataFromString(line, addTo) end) or {}
+    local rules = core:readTxtFile(rulesFile, function(addTo, line) core:getDataFromString(line, addTo) end)
+    if not rules then error("Cannot read sorting rules: " .. rulesFile) end
+    return rules
 end
 
 
