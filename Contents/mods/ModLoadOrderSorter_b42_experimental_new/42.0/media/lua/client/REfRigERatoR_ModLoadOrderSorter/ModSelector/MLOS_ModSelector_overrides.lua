@@ -24,7 +24,7 @@ require('REfRigERatoR_ModLoadOrderSorter/Layers/LayerManager')
 local sortingCore = require('REfRigERatoR_ModLoadOrderSorter/Core/SortingCore')
 local scrollExt = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/ScrollExtensions')
 local popup = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/WarningPopup')
-local srEditor = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/SortingRulesEditor')
+local srEditor = require('REfRigERatoR_ModLoadOrderSorter/Elements_UI/RulesEditor')
 
 
 local FONT_HGT_SMALL = getTextManager():getFontHeight(UIFont.Small)
