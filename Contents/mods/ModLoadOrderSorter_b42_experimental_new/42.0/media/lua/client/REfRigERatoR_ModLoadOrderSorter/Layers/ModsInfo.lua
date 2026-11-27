@@ -3,53 +3,79 @@ local core = require('REfRigERatoR_ModLoadOrderSorter/Core/Core')
 local CM = require("REfRigERatoR_ModLoadOrderSorter/Core/CorutineManager.lua")
 local listFilesInModDirectory = listFilesInModDirectory
 
+--- Mod metadata and current-session dependency relationships.
+--- `cache` retains parsed facts by mod ID; `data` is the current selection.
 local MLOS_ModsInfo = {}
-MLOS_ModsInfo.data = {} -- data[modId] = { id, name, category, requirements, loadAfter, loadBefore, incompatibleMods, requiredBy, warnings.missing, ... }
+MLOS_ModsInfo.data = {}
+MLOS_ModsInfo.cache = {}
+MLOS_ModsInfo.generation = 0
 
+-- Dynamic fields belong to the current analysis, not to cached metadata.
+local function makeCurrentInfo(cached, row)
+    local info = utils:deepCopy(cached)
+    info.object = row
+    info.requiredBy = {}
+    info.warnings = { missing = {} }
+    info.effectiveCategory = nil
+    return info
+end
 
-
-function MLOS_ModsInfo:load(modList, reread)
-	if utils:tableIsEmpty(modList) then return end
-
-	local modsCount = #modList
-    for i=1, modsCount do
-		local modObject = modList[i]
-        local modId = modObject.item.modId
-        local info = (reread ~= true and self.data[modId]) or self:getExtraModInfo(modObject)
-        info.requiredBy = {}
-        info.warnings = { missing = {} }
-
-        if info.category == nil or not utils:contains(core.rawCategoryOrder, info.category) then
-            pcall(function() error("\n[ERROR] --> [MLOS] Mod: [" .. tostring(info.name) .. "] have unknown category: " .. tostring(info.category) .. "\n") end )
-        end
-
-        self.data[modId] = info
-        CM.checkpoint(i/modsCount, "[ModsInfo] progress " .. tostring(i) .. "/" .. tostring(modsCount))
-    end
-
-    -- Reverse requirements and requirements that are not enabled.
-    for modId, info in pairs(self.data) do
-        for _, dep in ipairs(info.requirements or {}) do
-            if self.data[dep] then
-                table.insert(self.data[dep].requiredBy, modId)
+local function buildRelations(data)
+    for modId, info in pairs(data) do
+        for i, dep in ipairs(info.requirements or {}) do
+            if data[dep] then
+                table.insert(data[dep].requiredBy, modId)
             else
                 table.insert(info.warnings.missing, dep)
             end
+            if i % 128 == 0 then CM.checkpoint() end
         end
+        CM.checkpoint()
     end
 end
 
+--- Builds a new snapshot; publishes it only when the analysis has finished.
+--- If a newer task was requested during a yield, the older task cannot publish.
+function MLOS_ModsInfo:load(modList, reread, generation)
+    local data, updates = {}, {}
+    local modsCount = #modList
+    for i, row in ipairs(modList) do
+        local id = row and row.item and row.item.modId
+        if type(id) == "string" and id:match("%S") and not data[id] then
+            local cached = reread ~= true and self.cache[id] or nil
+            if not cached then
+                cached = self:getExtraModInfo(row)
+                -- Do not retain stale UI rows or derived analysis state in cache.
+                cached.object, cached.requiredBy, cached.warnings, cached.effectiveCategory = nil, nil, nil, nil
+                updates[id] = cached
+            end
+            local info = makeCurrentInfo(cached, row)
+            if info.category == nil or not utils:contains(core.rawCategoryOrder, info.category) then
+                print("[MLOS] Mod [" .. tostring(info.name or id) .. "] has unknown category: " .. tostring(info.category))
+            end
+            data[id] = info
+        else
+            print("[MLOS] Skipping invalid or duplicate mod ID: " .. tostring(id))
+        end
+        CM.checkpoint(i / math.max(modsCount, 1), "[ModsInfo] progress " .. tostring(i) .. "/" .. tostring(modsCount))
+    end
+    buildRelations(data)
+    if generation and generation ~= self.generation then return end
+    for id, cached in pairs(updates) do self.cache[id] = cached end
+    self.data = data
+end
 
-
---- Layer entry point, see LayerManager. Collects facts from mod.info for the
---- enabled mods only; everything that depends on sorting rules or on the
---- current order (graph, incompatibilities, validation) lives in SortingCore.
+--- Layer entry point. Freeze the row list before scheduling the task so later
+--- UI mutations cannot change which mods are analysed by an in-flight task.
 function MLOS_ModsInfo:getData(modList, reread)
-	CM.run(self.load, {
-		args = {self, modList, reread},
-		onStart = self.onStart,
-		onFinish = self.onFinish
-	})
+    local rows = {}
+    for i, row in ipairs(modList or {}) do rows[i] = row end
+    self.generation = self.generation + 1
+    return CM.run(self.load, {
+        args = {self, rows, reread == true, self.generation},
+        onStart = self.onStart,
+        onFinish = self.onFinish
+    })
 end
 
 function MLOS_ModsInfo.onStart() CM:setProgress(0, "[ModsInfo] processing ...") end
